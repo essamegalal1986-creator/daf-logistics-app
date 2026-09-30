@@ -407,7 +407,7 @@ function batchNo(s,bid){const b=find(s.batches||[],bid);return b?b.batchNo:''}
 /* Units of a batch across the current project's warehouses */
 /* Stock of a batch across the project's warehouses and sales team */
 function batchAvail(s,bid){const b=find(s.batches,bid);if(!b)return 0;return projLocs(s,b.projectId).reduce((a,l)=>a+qty(s,l[0],b.productId,bid),0)}
-function projLocs(s,pid){return [...s.warehouses.filter(w=>w.projectId===pid).map(w=>['W:'+w.id,w.name,'w']),...s.salesTeam.filter(x=>x.projectId===pid).map(x=>['S:'+x.id,x.name,'s'])]}
+function projLocs(s,pid,strict){const ok=x=>x.projectId===pid||(!strict&&x.projectId==='__all');return [...s.warehouses.filter(ok).map(w=>['W:'+w.id,w.name,'w']),...s.salesTeam.filter(ok).map(x=>['S:'+x.id,x.name,'s'])]}
 function itemLoc(it){return it.loc||(it.warehouseId?'W:'+it.warehouseId:'')}
 function batchesFor(s,pid){return s.batches.filter(b=>b.productId===pid).slice().sort((a,b)=>(a.expiry||'9999').localeCompare(b.expiry||'9999'))}
 /* Which batches a request line may use: stock-out types need stock on hand, stock-in types may use any batch of the product */
@@ -632,14 +632,15 @@ function toast(msg,kind){const t=document.getElementById('toast');t.innerHTML=`<
 
 /* ---------- Access ---------- */
 function allowedPages(u){return PAGES.map(p=>p[0]).filter(p=>(u.pages||[]).includes(p))}
-function myProjects(u){return u.role==='admin'?state.projects:state.projects.filter(p=>(u.projects||[]).includes(p.id))}
+function myProjects(u){return (u.role==='admin'||(u.projects||[]).includes('__all'))?state.projects:state.projects.filter(p=>(u.projects||[]).includes(p.id))}
 const ALL='__all';
 const isAll=()=>ui.project===ALL;
+const AG=()=>P(state.agents).filter(a=>!a.deleted);
 const isAdmin=()=>{const u=me();return !!u&&u.role==='admin'};
 function delBtn(kind,id){return isAdmin()?`<button class="btn bad sm" data-act="askDelete" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`:''}
 function myProjIds(){const u=me();return u?myProjects(u).map(p=>p.id):[]}
-const P=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project)};
-function projCode(pid){return (find(state.projects,pid)||{}).code||''}
+const P=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>x.projectId===ALL||ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project||x.projectId===ALL)};
+function projCode(pid){return pid===ALL?'ALL':(find(state.projects,pid)||{}).code||''}
 function projTag(pid){return isAll()?`<span class="ptag">${esc(projCode(pid))}</span>`:''}
 function allGate(what){const projs=myProjects(me());return `<div class="panel"><p style="margin-bottom:10px">You are viewing <strong>all projects</strong>. To ${esc(what)}, choose the project first:</p><div class="row">${projs.map(p=>`<button class="btn ghost sm" data-act="pickProject" data-id="${p.id}">${esc(p.code)}: ${esc(p.name)}</button>`).join('')}</div></div>`}
 function myAgentIds(u){return state.agents.filter(a=>a.userId===u.id).map(a=>a.id)}
@@ -797,7 +798,7 @@ function agentPanel(){
   const from=per==='today'?t0:per==='7'?back(6):per==='30'?back(29):'';
   const inP=t=>per==='today'?t.date===t0:(!from||(t.date||'')>=from);
   const T=P(state.tasks).filter(t=>t.agentId&&t.status!=='Awaiting route'&&inP(t));
-  const rows=P(state.agents).map(a=>{
+  const rows=AG().map(a=>{
     const ts=T.filter(t=>t.agentId===a.id);
     const c=k=>ts.filter(t=>t.status===k).length;
     const routed=c('Routed'),transit=c('In transit'),done=c('Completed'),failed=c('Failed');
@@ -885,7 +886,7 @@ function pgProducts(u){
   </form>
   <template id="pbTpl">${pbLine(false)}</template></div>
   ${table([{l:'SKU'},{l:'Product'},{l:'Unit'},{l:'Unit price',num:1},{l:'Project'}],rows,'No products yet.')}
-  ${isAll()?`<h2 style="margin:26px 0 6px">Batches</h2>`+allGate('see and add batches'):ui.project?pgBatches():''}`;
+  ${ui.project?pgBatches():''}`;
 }
 function pgBatches(){
   const B=P(state.batches).slice().sort((a,b)=>(nm(state.products,a.productId)).localeCompare(nm(state.products,b.productId))||(a.expiry||'').localeCompare(b.expiry||''));
@@ -928,19 +929,19 @@ function pgSetup(u){
     body=`<div class="panel"><form data-form="warehouse" class="fgrid">
       <label>Warehouse name<input name="name" required></label><label>Location<input name="location"></label>
       <button class="btn" type="submit">Add warehouse</button></form></div>`+
-      table([{l:'Warehouse'},{l:'Location'},{l:'Units in stock',num:1},...(isAdmin()?[{l:''}]:[])],P(state.warehouses).map(w=>[w.name+(isAll()?' ('+projCode(w.projectId)+')':''),w.location||'',String(locTotal(state,'W:'+w.id)),...(isAdmin()?[H(delBtn('warehouse',w.id))]:[])]),'No warehouses yet.');
+      table([{l:'Warehouse'},{l:'Location'},{l:'Units in stock',num:1},...(isAdmin()?[{l:''}]:[])],P(state.warehouses).map(w=>[w.name+((isAll()||w.projectId===ALL)?' ('+projCode(w.projectId)+')':''),w.location||'',String(locTotal(state,'W:'+w.id)),...(isAdmin()?[H(delBtn('warehouse',w.id))]:[])]),'No warehouses yet.');
   }else if(t==='sales'){
     body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Sales agents can receive stock through Transfer requests.</p><form data-form="salesperson" class="fgrid">
       <label>Name<input name="name" required></label><label>Role<input name="role" placeholder="e.g. Van sales"></label><label>Phone<input name="phone"></label>
       <button class="btn" type="submit">Add sales agent</button></form></div>`+
-      table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1},...(isAdmin()?[{l:''}]:[])],P(state.salesTeam).map(x=>[x.name+(isAll()?' ('+projCode(x.projectId)+')':''),x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id)),...(isAdmin()?[H(delBtn('sales',x.id))]:[])]),'No sales team yet.');
+      table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1},...(isAdmin()?[{l:''}]:[])],P(state.salesTeam).map(x=>[x.name+((isAll()||x.projectId===ALL)?' ('+projCode(x.projectId)+')':''),x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id)),...(isAdmin()?[H(delBtn('sales',x.id))]:[])]),'No sales team yet.');
   }else if(t==='agents'){
     const agentUsers=state.users.filter(x=>x.role==='agent'&&x.active);
     body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so they can see their routes on the My tasks page.</p><form data-form="agent" class="fgrid">
       <label>Agent name<input name="name" required></label><label>Phone<input name="phone"></label><label>Vehicle<input name="vehicle"></label>
       <label>Login account<select name="userId">${opts(agentUsers,'',x=>x.name+' ('+x.username+')','No login')}</select></label>
       <button class="btn" type="submit">Add agent</button></form></div>`+
-      table([{l:'Agent'},{l:'Phone'},{l:'Vehicle'},{l:'Login'},{l:'Open tasks',num:1}],P(state.agents).map(a=>[a.name,a.phone||'',a.vehicle||'',a.userId?(find(state.users,a.userId)||{}).username||'':'None',String(P(state.tasks).filter(t=>t.agentId===a.id&&!['Completed','Failed'].includes(t.status)).length)]),'No agents yet.');
+      table([{l:'Agent'},{l:'Phone'},{l:'Vehicle'},{l:'Login'},{l:'Open tasks',num:1},...(isAdmin()?[{l:''}]:[])],AG().map(a=>[a.name+((isAll()||a.projectId===ALL)?' ('+projCode(a.projectId)+')':''),a.phone||'',a.vehicle||'',a.userId?(find(state.users,a.userId)||{}).username||'':'None',String(P(state.tasks).filter(t=>t.agentId===a.id&&!['Completed','Failed'].includes(t.status)).length),...(isAdmin()?[H(delBtn('agent',a.id))]:[])]),'No agents yet.');
   }else{
     const mv=P(state.movements).filter(m=>m.ref==='OPENING').slice().reverse();
     const here=P(state.products),elsewhere=state.products.filter(p=>p.projectId!==ui.project&&myProjects(u).some(x=>x.id===p.projectId));
@@ -956,8 +957,8 @@ function pgSetup(u){
       <button class="btn" type="submit">Add opening stock</button></form></div>`+
       table([{l:'When'},{l:'Warehouse'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'By'}],mv.map(m=>[fmtT(m.at),locName(state,m.to),nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),m.by]),'No opening stock yet.');
   }
-  if(isAll()&&!['govs','groups'].includes(t))body=body.replace(/^<div class="panel">[\s\S]*?<\/form><\/div>/,allGate('add or change '+(tabs.find(x=>x[0]===t)||['',''])[1].toLowerCase()));
-  return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+
+  if(false)body=body.replace(/^<div class="panel">[\s\S]*?<\/form><\/div>/,allGate('add or change '+(tabs.find(x=>x[0]===t)||['',''])[1].toLowerCase()));
+  return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+(isAll()&&!['govs','groups','opening'].includes(t)?'<p class="note" style="margin-bottom:14px">You are in <strong>All my projects</strong>. What you add here is <strong>shared by every project</strong>, marked ALL.</p>':'')+
     `<div class="tabs" role="tablist">${tabs.map(x=>`<button class="tab ${t===x[0]?'on':''}" role="tab" aria-selected="${t===x[0]}" data-act="setupTab" data-tab="${x[0]}">${x[1]}</button>`).join('')}</div>`+body;
 }
 
@@ -1046,7 +1047,7 @@ function pgPrepare(u){
 }
 
 /* Trip serial per project: TRIP-<project code>-0001 */
-function tripNo(s,pid,peek){s.seq.trip=s.seq.trip||{};const pj=find(s.projects,pid)||{};const n=(s.seq.trip[pid]||0)+1;if(!peek)s.seq.trip[pid]=n;return 'TRIP-'+String(pj.code||'X').toUpperCase()+'-'+pad(n,4)}
+function tripNo(s,pid,peek){s.seq.trip=s.seq.trip||{};const pj=pid==='__all'?{code:'ALL'}:(find(s.projects,pid)||{});const n=(s.seq.trip[pid]||0)+1;if(!peek)s.seq.trip[pid]=n;return 'TRIP-'+String(pj.code||'X').toUpperCase()+'-'+pad(n,4)}
 function routeGovs(rt){return [...new Set(rt.taskIds.map(id=>{const t=find(state.tasks,id);const r=t&&find(state.requests,t.requestId);return r&&r.govId}).filter(Boolean))]}
 function routeStatus(rt){const ts=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean);if(!ts.length)return 'Planned';if(ts.every(t=>['Completed','Failed'].includes(t.status)))return 'Done';if(ts.some(t=>['In transit','Completed','Failed'].includes(t.status)))return 'In progress';return 'Planned'}
 
@@ -1070,12 +1071,12 @@ function routeCard(rt,agentView){
         <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
     }
     return `<div class="stop ${t.status==='Completed'?'is-done':t.status==='Failed'?'is-failed':''}"><span class="stop-n">${i+1}</span><div>${stopBody(t,r)}${actions}</div></div>`}).join('');
-  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
+  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
 }
 
 function pgRoutes(u){
   if(!ui.project)return ph('routes')+needProject();
-  const ags=P(state.agents);
+  const ags=AG();
   const waiting=P(state.tasks).filter(t=>t.status==='Awaiting route');
   const sel='';
   const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="muted small">Prepared ${fmtT(r.preparedAt)}</span></label>`}).join('');
@@ -1084,7 +1085,7 @@ function pgRoutes(u){
   const routes=P(state.routes).filter(rt=>(!rf.group||rt.groupId===rf.group)&&(!rf.gov||routeGovs(rt).includes(rf.gov))).slice().reverse();
   const groups=state.routeGroups.slice().sort((a,b)=>a.name.localeCompare(b.name));
   return ph('routes','Put prepared tasks on a route or trip, then choose the agent and date for the whole route. Filter by route group or governorate; stops follow the order you tick them.')+`
-  ${isAll()?allGate('create a route'):`<div class="panel"><h2>Create route</h2>
+  ${false?'':`<div class="panel"><h2>Create route</h2>
   ${waiting.length?`<form data-form="route" class="stack">
     <div class="fgrid">
       <label>Trip number (automatic)<input value="${esc(tripNo(state,ui.project,true))}" readonly aria-readonly="true" class="code" style="background:var(--sunk)"></label>
@@ -1136,7 +1137,7 @@ function invData(){
   const f=ui.inv||(ui.inv={product:'',loc:'',type:'',from:'',to:''});
   const prods=P(state.products).filter(p=>!f.product||p.id===f.product);
   const pids=isAll()?myProjIds():[ui.project];
-  const allLocs=pids.flatMap(pid=>projLocs(state,pid).map(l=>[l[0],(isAll()?projCode(pid)+' ':'')+(l[2]==='s'?l[1]+' (sales)':l[1]),l[2]==='s'?'Sales team':'Warehouse',pid]));
+  const allLocs=[...pids,...(isAll()?[ALL]:[])].flatMap(pid=>projLocs(state,pid,isAll()).map(l=>[l[0],(isAll()?projCode(pid)+' ':'')+(l[2]==='s'?l[1]+' (sales)':l[1]),l[2]==='s'?'Sales team':'Warehouse',pid]));
   const locs=allLocs.filter(l=>!f.loc||l[0]===f.loc);
   const mv=P(state.movements).filter(m=>(!f.product||m.productId===f.product)&&(!f.loc||m.from===f.loc||m.to===f.loc)&&(!f.type||m.type===f.type)&&(!f.from||m.at.slice(0,10)>=f.from)&&(!f.to||m.at.slice(0,10)<=f.to)).slice().reverse();
   return {f,prods,allLocs,locs,mv};
@@ -1145,7 +1146,7 @@ function pgInventory(u){
   if(!ui.project)return ph('inventory')+needProject();
   const {f,prods,allLocs,locs:locsAll,mv}=invData();
   const rows=[];
-  const locs=isAll()&&!f.product?locsAll:locsAll.filter(l=>!f.product||l[3]===(find(state.products,f.product)||{}).projectId);
+  const locs=isAll()&&!f.product?locsAll:locsAll.filter(l=>!f.product||l[3]===ALL||l[3]===(find(state.products,f.product)||{}).projectId);
   prods.forEach(p=>{const bs=batchesFor(state,p.id);const totals=locs.map(()=>0);
     bs.forEach(b=>{const vals=locs.map(l=>qty(state,l[0],p.id,b.id));vals.forEach((v,i)=>totals[i]+=v);const t=vals.reduce((a,c)=>a+c,0);
       rows.push([H(`<span class="muted">${esc(p.sku)}</span>`),H(`<span class="code">${esc(b.batchNo)}</span>`),fmtD(b.expiry),...vals.map(v=>({h:`<span class="${v<0?'neg':''}">${v}</span>`})),{h:String(t)}])});
@@ -1207,6 +1208,18 @@ function deletePlan(s,kind,id){
     const t=taskOf(s,r.ref);const rt=t&&t.routeId?find(s.routes,t.routeId):null;
     return {title:'Delete order '+r.ref+'?',name:r.ref,points:[`${r.type} for ${partyText(s,r)}${r.items.length?', '+itemsText(s,r):''}.`,t?'Its task is deleted'+(rt?' and removed from trip '+rt.name:'')+'.':'It has no task yet.','The deletion is kept in the activity log.','This cannot be undone.']};
   }
+  if(kind==='route'){
+    const rt=find(s.routes,id);if(!rt)return {blocked:'This trip no longer exists.'};
+    const ts=rt.taskIds.map(t=>find(s.tasks,t)).filter(Boolean);const started=ts.filter(t=>t.status!=='Routed');
+    if(started.length)return {title:'Delete trip '+rt.name+'?',blocked:`${started.length} stop${started.length===1?' has':'s have'} already been started, completed or failed on this trip (${started.map(t=>t.ref).slice(0,5).join(', ')}). A trip with activity is kept for the record.`};
+    return {title:'Delete trip '+rt.name+'?',name:'Trip '+rt.name,points:[ts.length?`Its ${ts.length} order${ts.length===1?'':'s'} (${ts.map(t=>t.ref).slice(0,6).join(', ')}${ts.length>6?'…':''}) ${ts.length===1?'goes':'go'} back to the Routes page, waiting for a new trip.`:'The trip has no stops.','The agent and date are removed from those orders.','This cannot be undone.']};
+  }
+  if(kind==='agent'){
+    const a=find(s.agents,id);if(!a||a.deleted)return {blocked:'This agent no longer exists.'};
+    const open=s.tasks.filter(t=>t.agentId===id&&['Routed','In transit'].includes(t.status));
+    if(open.length)return {title:'Delete '+a.name+'?',blocked:`${a.name} has ${open.length} open stop${open.length===1?'':'s'} on trips (${open.map(t=>t.ref).slice(0,5).join(', ')}). Finish them, or delete or reassign those trips first.`};
+    return {title:'Delete '+a.name+'?',name:a.name,points:['The agent is removed from all lists and cannot be chosen for new trips.','Past trips, deliveries and sales keep the agent\'s name.',a.userId?'Their login is not deleted. Deactivate it on Users and access if needed.':'This cannot be undone.']};
+  }
   return {blocked:'Unknown record.'};
 }
 function applyDelete(s,kind,id){
@@ -1218,6 +1231,14 @@ function applyDelete(s,kind,id){
     s.archive[loc]=x.name;s[key]=s[key].filter(y=>y.id!==id);
     for(const k in s.stock)if(k.startsWith(loc+'|')&&!s.stock[k])delete s.stock[k];
     log(s,kind==='warehouse'?'Warehouse deleted':'Sales team member deleted',null,x.name,'Deleted',null,x.projectId);
+  }else if(kind==='route'){
+    const rt=find(s.routes,id);
+    rt.taskIds.forEach(tid=>{const t=find(s.tasks,tid);if(!t)return;t.status='Awaiting route';t.routeId=null;t.agentId='';t.date='';t.routeDate='';const r=find(s.requests,t.requestId);if(r)r.status='Prepared';log(s,'Removed from trip',t.ref,'Trip '+rt.name+' was deleted; waiting for a new trip','Awaiting route',null,r?r.projectId:rt.projectId)});
+    s.routes=s.routes.filter(x=>x.id!==id);
+    log(s,'Trip deleted',null,rt.name+(rt.note?' ('+rt.note+')':'')+', '+rt.taskIds.length+' stop(s)','Deleted',null,rt.projectId===ALL?null:rt.projectId);
+  }else if(kind==='agent'){
+    const a=find(s.agents,id);a.deleted=true;a.deletedAt=now();
+    log(s,'Logistics agent deleted',null,a.name,'Deleted',null,a.projectId===ALL?null:a.projectId);
   }else{
     const r=find(s.requests,id);const t=taskOf(s,r.ref);
     if(t){if(t.routeId){const rt=find(s.routes,t.routeId);if(rt)rt.taskIds=rt.taskIds.filter(tid=>tid!==t.id)}s.tasks=s.tasks.filter(x=>x.id!==t.id)}
@@ -1402,19 +1423,19 @@ function pgReport(u){
 }
 
 function userFields(x,isNew){
-  const role=x?x.role:'ops';const pages=x?x.pages:ROLE_PAGES[role];const projs=x?x.projects:(isAll()?[]:[ui.project]);
+  const role=x?x.role:'ops';const pages=x?x.pages:ROLE_PAGES[role];const projs=x?x.projects:(isAll()?['__all']:[ui.project]);
   return `<div class="fgrid">
     <label>Full name<input name="name" required value="${esc(x?x.name:'')}"></label>
     ${isNew?`<label>Username<input name="username" required autocapitalize="none" pattern="[A-Za-z0-9._\-]+" title="Letters, numbers, dot, dash or underscore"></label>`:''}
     <label>${isNew?'Password':'New password'}<input name="password" type="password" ${isNew?'required minlength="6"':'minlength="6" placeholder="Leave blank to keep"'} autocomplete="new-password"></label>
     <label>Role<select name="role" data-chg="userRole">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${k===role?'selected':''}>${v}</option>`).join('')}</select></label>
   </div>
-  <fieldset style="margin-top:12px"><legend>Projects this user can see</legend><div class="checks">${state.projects.map(p=>`<label><input type="checkbox" name="projects" value="${p.id}" ${(projs||[]).includes(p.id)?'checked':''}>${esc(p.code)}: ${esc(p.name)}</label>`).join('')||'<span class="muted small">Create a project first.</span>'}</div></fieldset>
+  <fieldset style="margin-top:12px"><legend>Projects this user can see</legend><div class="checks"><label><input type="checkbox" name="projects" value="__all" ${(projs||[]).includes('__all')?'checked':''}><strong>All projects, including new ones</strong></label>${state.projects.map(p=>`<label><input type="checkbox" name="projects" value="${p.id}" ${(projs||[]).includes(p.id)?'checked':''}>${esc(p.code)}: ${esc(p.name)}</label>`).join('')||'<span class="muted small">Create a project first.</span>'}</div></fieldset>
   <fieldset style="margin-top:10px"><legend>Pages this user can open (set by role, adjust if needed)</legend><div class="checks">${PAGES.map(p=>`<label><input type="checkbox" name="pages" value="${p[0]}" ${(pages||[]).includes(p[0])?'checked':''}>${esc(p[1])}</label>`).join('')}</div></fieldset>`;
 }
 
 function pgUsers(u){
-  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,ROLES[x.role],x.role==='admin'?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${FB&&!x.fbUid?`<button class="btn sm" data-act="fbSetupLogin" data-id="${x.id}">Set up login</button>`:''}${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
+  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,ROLES[x.role],(x.role==='admin'||(x.projects||[]).includes('__all'))?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${FB&&!x.fbUid?`<button class="btn sm" data-act="fbSetupLogin" data-id="${x.id}">Set up login</button>`:''}${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
     if(ui.expand===x.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="userEdit" data-id="${x.id}">${userFields(x,false)}<div class="row" style="margin-top:12px"><button class="btn" type="submit">Save changes</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('users','The administrator creates every login and decides which projects and pages each person can see.')+`
@@ -1464,21 +1485,21 @@ const forms={
     if(!pid)throw new Error('Choose the product.');
     if(s.batches.some(b=>b.productId===pid&&b.batchNo===no))throw new Error('Batch '+no+' already exists for this product.');
     const mfg=fd.get('mfg')||'',exp=fd.get('expiry')||'';if(mfg&&exp&&exp<mfg)throw new Error('Expiry must be after the manufacturing date.');
-    s.batches.push({id:rid('bt'),projectId:ui.project,productId:pid,batchNo:no,mfg,expiry:exp,createdAt:now(),createdBy:cur()});
+    s.batches.push({id:rid('bt'),projectId:(find(s.products,pid)||{}).projectId||ui.project,productId:pid,batchNo:no,mfg,expiry:exp,createdAt:now(),createdBy:cur()});
     log(s,'Batch added',null,no+' for '+nm(s.products,pid)+(exp?', expiry '+exp:''));
   },'Batch added.')},
   gov(fd){act(s=>{const n=String(fd.get('name')).trim();if(s.govs.some(g=>g.name.toLowerCase()===n.toLowerCase()))throw new Error(n+' is already in the list.');s.govs.push({id:rid('gov'),name:n});log(s,'Governorate added',null,n,'',null,null)},'Governorate added.')},
   group(fd){act(s=>{const name=String(fd.get('name')).trim(),govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');if(s.routeGroups.some(g=>g.name.toLowerCase()===name.toLowerCase()))throw new Error('A group named '+name+' already exists.');s.routeGroups.push({id:rid('rg'),name,govIds,createdAt:now(),createdBy:cur()});log(s,'Route group created',null,name+': '+govIds.map(id=>nm(s.govs,id)).join(', '),'',null,null)},'Route group created.')},
   groupEdit(fd,f){act(s=>{const g=find(s.routeGroups,f.dataset.id);const govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');const nn=String(fd.get('name')).trim();if(s.routeGroups.some(x=>x.id!==g.id&&x.name.toLowerCase()===nn.toLowerCase()))throw new Error('A group named '+nn+' already exists.');g.name=nn;g.govIds=govIds;ui.expand=null;log(s,'Route group updated',null,g.name+': '+govIds.map(id=>nm(s.govs,id)).join(', '))},'Route group saved.')},
-  customerEdit(fd,f){act(s=>{const c=find(s.customers,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>x.projectId===c.projectId&&x.id!==c.id&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');Object.assign(c,{code,name:String(fd.get('name')).trim(),govId:fd.get('govId')||'',address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()});ui.expand=null;log(s,'Customer updated',null,code+' '+c.name)},'Customer saved.')},
-  customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>x.projectId===ui.project&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:ui.project,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
+  customerEdit(fd,f){act(s=>{const c=find(s.customers,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(c.projectId===ALL||x.projectId===ALL||x.projectId===c.projectId)&&x.id!==c.id&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');Object.assign(c,{code,name:String(fd.get('name')).trim(),govId:fd.get('govId')||'',address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()});ui.expand=null;log(s,'Customer updated',null,code+' '+c.name)},'Customer saved.')},
+  customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(ui.project===ALL||x.projectId===ALL||x.projectId===ui.project)&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:ui.project,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
   warehouse(fd){act(s=>{const w={id:rid('wh'),projectId:ui.project,name:String(fd.get('name')).trim(),location:String(fd.get('location')).trim()};s.warehouses.push(w);log(s,'Warehouse added',null,w.name)},'Warehouse added.')},
   salesperson(fd){act(s=>{const x={id:rid('st'),projectId:ui.project,name:String(fd.get('name')).trim(),role:String(fd.get('role')).trim(),phone:String(fd.get('phone')).trim()};s.salesTeam.push(x);log(s,'Sales agent added',null,x.name)},'Sales agent added.')},
   agent(fd){act(s=>{const a={id:rid('ag'),projectId:ui.project,name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim(),vehicle:String(fd.get('vehicle')).trim(),userId:fd.get('userId')||''};s.agents.push(a);log(s,'Logistics agent added',null,a.name+(a.userId?', login '+nm(s.users,a.userId):''))},'Agent added.')},
   opening(fd){act(s=>{
     const q=Math.floor(Number(fd.get('qty')));if(!(q>0))throw new Error('Enter a quantity above zero.');
     const bid=fd.get('batch');if(!bid)throw new Error('Choose the batch.');
-    move(s,{ref:'OPENING',type:'Opening stock',projectId:ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:'W:'+fd.get('wh')});
+    move(s,{ref:'OPENING',type:'Opening stock',projectId:(find(s.products,fd.get('product'))||{}).projectId||ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:'W:'+fd.get('wh')});
     log(s,'Opening stock added',null,q+' × '+nm(s.products,fd.get('product'))+', batch '+batchNo(s,bid)+' into '+nm(s.warehouses,fd.get('wh')),'');
   },'Opening stock added.')},
   request(fd){act(s=>{
