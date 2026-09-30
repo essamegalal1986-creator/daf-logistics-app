@@ -1,0 +1,1618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DAF Logistics App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Mulish:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3F4F9; --surface:#FFFFFF; --sunk:#F7F8FC; --ink:#1B2038; --muted:#5A6180; --line:#DCDFEC;
+  --route:#2B3A8F; --route-ink:#FFFFFF; --route-soft:#E6E9F6;
+  --tag:#2B3A8F; --tag-ink:#FFFFFF;
+  --navy:#2B3A8F; --navy-deep:#222E73; --on-navy:#FFFFFF; --on-navy-muted:rgba(255,255,255,.72);
+  --ok:#1C7348; --ok-soft:#DFF1E6; --warn:#955A00; --warn-soft:#FBEBCF; --bad:#B0281F; --bad-soft:#F9E1DE; --info-soft:#E6E9F0;
+  --body:'Mulish', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --cond:'Montserrat', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#12141C; --surface:#1B1E2A; --sunk:#161923; --ink:#E7E9F2; --muted:#9CA2BD; --line:#2C3145;
+    --route:#9AA8F0; --route-ink:#12162C; --route-soft:#252C4F; --tag:#3C4DB0; --tag-ink:#FFFFFF; --navy:#27347F; --navy-deep:#1D2766;
+    --ok:#6CCB97; --ok-soft:#173226; --warn:#E9B25A; --warn-soft:#352A14; --bad:#F08A80; --bad-soft:#3A1D1B; --info-soft:#232B35;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#12141C; --surface:#1B1E2A; --sunk:#161923; --ink:#E7E9F2; --muted:#9CA2BD; --line:#2C3145;
+    --route:#9AA8F0; --route-ink:#12162C; --route-soft:#252C4F; --tag:#3C4DB0; --tag-ink:#FFFFFF; --navy:#27347F; --navy-deep:#1D2766;
+  --ok:#6CCB97; --ok-soft:#173226; --warn:#E9B25A; --warn-soft:#352A14; --bad:#F08A80; --bad-soft:#3A1D1B; --info-soft:#232B35;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{font-family:var(--cond);font-weight:600;line-height:1.2;margin:0;letter-spacing:-.005em}
+h2{font-size:19px} h3{font-size:16px}
+p{margin:0}
+.muted{color:var(--muted)} .small{font-size:13px}
+:focus-visible{outline:2px solid var(--route);outline-offset:2px}
+
+/* Shell */
+.top{display:flex;align-items:center;gap:16px;padding:10px 20px;background:var(--navy);color:var(--on-navy);border-bottom:1px solid var(--navy-deep);position:sticky;top:env(safe-area-inset-top,0px);z-index:5;flex-wrap:wrap}
+.brand{font-family:var(--cond);font-weight:300;font-size:19px;letter-spacing:.02em;margin-right:auto;display:flex;align-items:center;gap:12px;color:var(--on-navy)}
+.brand b{font-weight:600}
+.logo{display:inline-grid;place-items:center;background:var(--navy);color:#fff;border-radius:22%;font-family:var(--cond);font-weight:400;letter-spacing:.04em;line-height:1;flex:none}
+.logo span{transform:scaleX(1.18);display:inline-block}
+.top .logo{width:38px;height:38px;font-size:13px;background:#fff;color:var(--navy)}
+.brand .rule{width:1.5px;height:28px;background:rgba(255,255,255,.55)}
+.top select{min-width:220px;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.35);color:#fff}
+.top select option{color:#1B2038;background:#fff}
+.top .muted{color:var(--on-navy-muted)}
+.top .btn.plain{border-color:rgba(255,255,255,.5);color:#fff}
+.top .btn.plain:hover{background:rgba(255,255,255,.12)}
+.who{display:flex;align-items:center;gap:10px;font-size:14px}
+.who strong{display:block;line-height:1.2}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:calc(100vh - 60px)}
+.nav{padding:18px 10px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.nav-i{display:flex;align-items:center;gap:10px;font-size:15px;text-align:left;border:0;background:none;padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--ink);font-weight:500}
+.nav-i:hover{background:var(--sunk)}
+.nav-i.on{background:var(--route-soft);color:var(--route);box-shadow:inset 3px 0 0 var(--route);font-weight:700}
+.nav-n{font-family:var(--cond);font-weight:600;width:20px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.nav-i.on .nav-n{color:var(--route)}
+.nav-c{margin-left:auto;background:var(--route);color:var(--route-ink);font-size:12px;font-weight:600;border-radius:999px;padding:0 7px;min-width:20px;text-align:center}
+.main{padding:24px clamp(14px,3vw,36px) 60px;min-width:0}
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr}
+  .nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px 10px;background:var(--surface)}
+  .nav-i{white-space:nowrap;flex:none}
+  .top select{min-width:0;flex:1}
+  .brand{font-size:21px}
+}
+
+/* Page header: step numeral is the type moment */
+.ph{display:flex;align-items:flex-end;gap:16px;margin-bottom:22px}
+.ph-n{font-family:var(--cond);font-weight:700;font-size:64px;line-height:.8;color:transparent;-webkit-text-stroke:1.5px var(--route);font-variant-numeric:tabular-nums}
+.ph h1{font-size:26px;font-weight:600}
+.ph{border-left:3px solid var(--navy);padding-left:14px}
+.ph p{color:var(--muted);max-width:68ch;margin-top:2px}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
+.panel > h2{margin-bottom:12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:12px}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:500}
+input,select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;color:var(--ink);font-size:15px;width:100%;min-width:0}
+input[type=checkbox]{width:auto}
+textarea{min-height:60px;resize:vertical}
+.checks{display:flex;flex-wrap:wrap;gap:6px 14px}
+.checks label{flex-direction:row;align-items:center;gap:6px;color:var(--ink);font-size:14px}
+fieldset{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0}
+legend{font-size:13px;color:var(--muted);padding:0 4px}
+.btn{border:1px solid var(--route);background:var(--route);color:var(--route-ink);border-radius:6px;padding:8px 14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent;color:var(--route)}
+.btn.sm{padding:4px 10px;font-size:14px}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.btn.bad{background:transparent;border-color:var(--bad);color:var(--bad)}
+.btn.plain{background:transparent;border-color:var(--line);color:var(--ink)}
+.link{background:none;border:0;padding:0;color:var(--route);cursor:pointer;font-weight:500;text-decoration:underline;text-underline-offset:2px}
+
+/* Tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--sunk);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.neg{color:var(--bad)}
+tr.expanded td{background:var(--sunk)}
+.empty{padding:22px;text-align:center;color:var(--muted)}
+
+/* Reference tag: the one thread through the whole app */
+.ref{display:inline-block;position:relative;font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.02em;background:var(--tag);color:var(--tag-ink);padding:0 9px 0 16px;line-height:22px;clip-path:polygon(8px 0,100% 0,100% 100%,8px 100%,0 50%);white-space:nowrap;border:0;cursor:default;font-variant-numeric:tabular-nums}
+.ref::before{content:"";position:absolute;left:7px;top:50%;width:5px;height:5px;margin-top:-2.5px;border-radius:50%;background:var(--surface)}
+button.ref{cursor:pointer}
+button.ref:hover{filter:brightness(.95)}
+.ref.lg{font-size:20px;line-height:34px;padding:0 14px 0 24px;clip-path:polygon(12px 0,100% 0,100% 100%,12px 100%,0 50%)}
+.ref.lg::before{left:10px;width:7px;height:7px;margin-top:-3.5px}
+.code{font-family:var(--cond);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.st{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:1px 9px;border-radius:999px;background:var(--info-soft);white-space:nowrap}
+.st::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.st-new{color:var(--route);background:var(--route-soft)}
+.st-prepared,.st-awaiting-route,.st-planned{color:var(--warn);background:var(--warn-soft)}
+.st-routed,.st-in-transit,.st-in-progress{color:var(--route);background:var(--route-soft)}
+.st-completed,.st-recorded,.st-done,.st-active{color:var(--ok);background:var(--ok-soft)}
+.st-counted{color:var(--warn);background:var(--warn-soft)}
+.st-reallocated,.st-partly-reallocated{color:var(--ok);background:var(--ok-soft)}
+.st-returned-to-stock{color:var(--muted);background:var(--info-soft)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:7px 14px;font-weight:600;cursor:pointer;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--route);color:var(--route-ink)}
+.st-failed,.st-inactive{color:var(--bad);background:var(--bad-soft)}
+.ty{font-size:13px;font-weight:600;color:var(--muted)}
+
+/* Stats and chain */
+.ccard{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px}
+.ccard span{display:block}
+.rmap-day{margin-bottom:18px}
+.rmap-day:last-child{margin-bottom:0}
+.rmap-day > h3{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.rmap-route{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;background:var(--surface)}
+.rmap-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--sunk);border-radius:10px 10px 0 0}
+.rmap-head .who-a{display:flex;align-items:center;gap:8px}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-family:var(--cond);font-size:12px;font-weight:600;flex:none}
+.rmap-prog{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.rmap-prog .abar{min-width:90px;width:120px}
+.metro-scroll{overflow-x:auto;padding:16px 8px 12px}
+.metro{display:flex;list-style:none;margin:0;padding:0;min-width:max-content}
+.mnode{position:relative;width:150px;display:flex;flex-direction:column;align-items:center;text-align:center;flex:none}
+.mnode::before{content:"";position:absolute;top:15px;right:50%;width:100%;height:4px;background:var(--line);z-index:0}
+.mnode:first-child::before{display:none}
+.mnode.trav::before{background:var(--route)}
+.mdot{position:relative;z-index:1;width:34px;height:34px;border-radius:50%;border:3px solid var(--route);background:var(--surface);color:var(--route);display:grid;place-items:center;font-family:var(--cond);font-weight:700;font-size:13px}
+.mnode.s-completed .mdot{background:var(--ok);border-color:var(--ok);color:#fff}
+.mnode.s-failed .mdot{background:var(--bad);border-color:var(--bad);color:#fff}
+.mnode.s-in-transit .mdot{background:var(--route-soft);box-shadow:0 0 0 4px var(--route-soft)}
+.mnode.endpt .mdot{border-radius:8px;background:var(--navy);border-color:var(--navy);color:#fff;font-size:11px}
+.mnode.finish:not(.done) .mdot{background:var(--surface);color:var(--route);border-style:dashed}
+.mlbl{margin-top:8px;padding:0 6px;font-size:13px;line-height:1.35;display:flex;flex-direction:column;align-items:center;gap:3px}
+.mlbl strong{font-size:13px;font-weight:700;max-width:138px;overflow-wrap:anywhere}
+.mlbl .muted{font-size:12px}
+.mlbl .ref{font-size:11px;line-height:18px}
+@media (prefers-reduced-motion:no-preference){.mnode.s-in-transit .mdot{animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 8px transparent}}}
+.sc-prod td{background:var(--sunk)}
+.ptag{display:inline-block;font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--route);background:var(--route-soft);border-radius:4px;padding:0 6px;margin-left:6px;vertical-align:1px}
+.abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
+.abar i{display:block;height:100%}
+.b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
+.lg-k{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-left:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{display:block;font-family:var(--cond);font-size:26px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:13px;color:var(--muted)}
+.chain{display:flex;align-items:center;gap:0;flex-wrap:nowrap}
+.ch{display:flex;align-items:center;font-size:12px;color:var(--muted);white-space:nowrap}
+.ch i{width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--surface);display:inline-block;margin-right:5px;flex:none}
+.ch.done i{background:var(--route);border-color:var(--route)}
+.ch.done{color:var(--ink)}
+.ch.fail i{background:var(--bad);border-color:var(--bad)}
+.ch + .ch::before{content:"";width:16px;height:2px;background:var(--line);margin:0 6px}
+.ch.done + .ch.done::before{background:var(--route)}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.tab{border:0;background:none;padding:8px 12px;cursor:pointer;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab.on{color:var(--route);border-bottom-color:var(--route)}
+
+.note{background:var(--sunk);border-left:3px solid var(--tag);padding:8px 12px;border-radius:0 6px 6px 0;font-size:14px}
+.err{color:var(--bad);font-size:14px}
+.pbline{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end}
+@media (max-width:640px){.pbline{grid-template-columns:1fr 1fr}}
+.line{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) 100px auto;gap:8px;align-items:start}
+.line label{min-height:100%}
+.line .btn{margin-top:22px}
+.bhint{min-height:18px;font-weight:400}
+.bhint.okh{color:var(--ok)}
+.bhint.bad{color:var(--bad)}
+@media (max-width:640px){.line{grid-template-columns:1fr 1fr}}
+.hide{display:none!important}
+
+/* Routes / stops */
+.route{border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:14px;overflow:hidden}
+.route-h{padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line);background:var(--sunk)}
+.stop{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;padding:14px 16px;border-bottom:1px dashed var(--line)}
+.stop:last-child{border-bottom:0}
+.stop-n{width:30px;height:30px;border-radius:50%;border:2px solid var(--route);color:var(--route);display:grid;place-items:center;font-family:var(--cond);font-weight:700}
+.stop.is-done .stop-n{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.stop.is-failed .stop-n{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.items{margin:6px 0 0;padding:0;list-style:none;font-size:14px}
+.items li{padding:2px 0}
+
+/* Trace */
+.timeline{list-style:none;margin:0;padding:0;border-left:2px solid var(--line);margin-left:6px}
+.timeline li{position:relative;padding:0 0 14px 18px}
+.timeline li::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--route)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.kv div{background:var(--sunk);border-radius:8px;padding:10px 12px}
+.kv span{display:block;font-size:13px;color:var(--muted)}
+
+/* Login */
+.login{min-height:100vh;display:grid;place-items:center;padding:24px}
+.login-card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px}
+.lockup{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.lockup .logo{width:86px;height:86px;font-size:27px}
+.lockup .rule{width:2px;align-self:stretch;background:var(--navy);opacity:.85}
+.lockup .words{font-family:var(--cond);font-weight:300;color:var(--route);font-size:19px;line-height:1.25;letter-spacing:.03em}
+.lockup .words b{font-weight:400;font-size:26px;line-height:1}
+.app-name{font-family:var(--cond);font-weight:300;font-size:24px;letter-spacing:.01em;margin-bottom:4px}
+.app-name b{font-weight:600;color:var(--route)}
+.login{background:linear-gradient(180deg,var(--navy) 0,var(--navy) 38%,var(--paper) 38%)}
+.demo{margin-top:22px;border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:4px}
+.demo-row{display:flex;justify-content:space-between;gap:10px;border:0;background:var(--sunk);border-radius:6px;padding:7px 10px;cursor:pointer;text-align:left;font-size:14px}
+.demo-row span{color:var(--muted)}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-weight:500;max-width:min(560px,90vw);z-index:20;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.toast.bad{background:var(--bad);color:#fff}
+.banner{background:var(--route-soft);color:var(--route);padding:8px 14px;border-radius:8px;margin-bottom:14px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+@media (prefers-reduced-motion:no-preference){.toast{animation:rise .2s ease-out}@keyframes rise{from{opacity:0;transform:translate(-50%,8px)}}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* ---------- Constants ---------- */
+/* LIVE_MODE true = starts empty, first visitor creates the administrator; no demo data or demo logins */
+const LIVE_MODE=true;
+/* Built-in first administrator for the live version. The temporary password must be changed at first sign-in. */
+const FIRST_ADMIN={username:'admin',password:'DafAdmin2026',name:'Administrator'};
+async function liveStart(){const s=migrate(blank());s.users.push({id:'u_admin',username:FIRST_ADMIN.username,name:FIRST_ADMIN.name,role:'admin',projects:[],pages:[...ROLE_PAGES.admin],active:true,mustChange:true,hash:await hashPw(FIRST_ADMIN.username,FIRST_ADMIN.password),createdAt:now()});return s}
+const ROLES={admin:'Administrator',ops:'Operations',lead:'Logistics team leader',agent:'Logistics agent',viewer:'Report viewer'};
+const PAGES=[
+  ['dashboard','Overview',''],
+  ['projects','Projects','1'],
+  ['products','Products','2'],
+  ['setup','Setup data','3'],
+  ['requests','Requests','4'],
+  ['prepare','Prepare requests','5'],
+  ['routes','Routes and trips','6'],
+  ['mytasks','My tasks','7'],
+  ['sales','Sales','8'],
+  ['inventory','Inventory','9'],
+  ['stockcheck','Stock validation',''],
+  ['report','Activity report','10'],
+  ['users','Users and access','']
+];
+const ROLE_PAGES={
+  admin:PAGES.map(p=>p[0]),
+  ops:['dashboard','requests','sales','inventory','report'],
+  lead:['dashboard','prepare','routes','inventory','stockcheck','report'],
+  agent:['mytasks'],
+  viewer:['dashboard','sales','inventory','report']
+};
+const TYPES={
+  Delivery:{flow:'out',customer:true,wh:'Ship from',help:'Deducts stock from the selected warehouse or sales team member and records a sale on completion.'},
+  Transfer:{flow:'move',customer:false,wh:'Move from',help:'Moves stock from a warehouse or sales agent to a sales agent or another warehouse.'},
+  Received:{flow:'in',customer:false,wh:'Receive into',help:'Adds stock to the selected warehouse.'},
+  Return:{flow:'in',customer:true,wh:'Return to',help:'Adds each product back to its selected warehouse or sales team member.'},
+  Cancelled:{flow:'in',customer:true,wh:'Return to',help:'Adds each product back to its selected warehouse or sales team member.'},
+  Documentation:{flow:'none',customer:true,wh:null,help:'No stock movement. The team leader assigns only the agent and date.'}
+};
+const DEMO=[['admin','admin123','Administrator'],['mona','ops123','Operations'],['tarek','lead123','Team leader'],['karim','agent123','Agent, North region'],['youssef','agent123','Agent, Coastal accounts']];
+const LS_KEY='waybill-state-v1', SS_KEY='waybill-session-v1';
+
+/* ---------- Helpers ---------- */
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=(n,w)=>String(n).padStart(w,'0');
+const now=()=>new Date().toISOString();
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)};
+const rid=p=>p+'_'+Math.random().toString(36).slice(2,9);
+const fmtT=iso=>{if(!iso)return '';const d=new Date(iso);return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})};
+const fmtD=s=>{if(!s)return '';const d=new Date(s+'T00:00:00');return isNaN(d)?s:d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})};
+const money=n=>Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const slug=s=>String(s||'').toLowerCase().replace(/\s+/g,'-');
+const st=s=>s?`<span class="st st-${slug(s)}">${esc(s)}</span>`:'';
+
+async function hashPw(username,pw){
+  const txt='waybill|'+username.toLowerCase()+'|'+pw;
+  try{
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(txt));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){ let h=2166136261; for(const c of txt){h^=c.charCodeAt(0);h=Math.imul(h,16777619)} return 'f'+(h>>>0).toString(16); }
+}
+
+/* ---------- State ---------- */
+let state=null, session=null, docRef=null, lastJson='';
+const ui={page:null,project:null,expand:null,setupTab:'customers',reportTab:'activity',traceRef:'',rf:{from:'',to:'',type:'',status:'',user:'',q:'',gov:''},loginError:'',pending:false,sync:'local',reqFilter:''};
+
+function blank(){return {v:2,rev:0,counts:[],seq:{cnt:0,ord:0,task:0,route:0,sale:0,mov:0,log:0},users:[],projects:[],products:[],customers:[],warehouses:[],salesTeam:[],agents:[],batches:[],govs:seedGovs(),routeGroups:[],stock:{},movements:[],requests:[],tasks:[],routes:[],sales:[],log:[]}}
+
+const GOV_NAMES=['Cairo','Giza','Alexandria','Qalyubia','Sharqia','Dakahlia','Gharbia','Monufia','Beheira','Kafr El Sheikh','Damietta','Port Said','Ismailia','Suez','Faiyum','Beni Suef','Minya','Asyut','Sohag','Qena','Luxor','Aswan','Red Sea','New Valley','Matrouh','North Sinai','South Sinai'];
+const govId=n=>'gov_'+n.toLowerCase().replace(/[^a-z]+/g,'_');
+function seedGovs(){return GOV_NAMES.map(n=>({id:govId(n),name:n}))}
+const govName=id=>nm((state&&state.govs)||[],id,'');
+function govsSorted(){return (state.govs||[]).slice().sort((a,b)=>a.name.localeCompare(b.name))}
+async function seedState(){
+  const s=blank();
+  const P1='prj_north', P2='prj_coast';
+  s.projects.push({id:P1,code:'NRD',name:'North region distribution',desc:'Beverage distribution to retail stores',createdAt:now(),createdBy:'admin'});
+  s.projects.push({id:P2,code:'CKA',name:'Coastal key accounts',desc:'Hotel and restaurant accounts',createdAt:now(),createdBy:'admin'});
+  const U=async(id,username,pw,name,role,projects)=>s.users.push({id,username,name,role,projects,pages:[...ROLE_PAGES[role]],active:true,hash:await hashPw(username,pw),createdAt:now()});
+  await U('u_admin','admin','admin123','Sara Admin','admin',[P1,P2]);
+  await U('u_mona','mona','ops123','Mona Ibrahim','ops',[P1,P2]);
+  await U('u_tarek','tarek','lead123','Tarek Nabil','lead',[P1,P2]);
+  await U('u_karim','karim','agent123','Karim Fathy','agent',[P1]);
+  await U('u_youssef','youssef','agent123','Youssef Ali','agent',[P2]);
+  s.products.push(
+    {id:'prd_1',projectId:P1,sku:'SW-500',name:'Sparkling water 500 ml, 24 pack',unit:'case',price:180},
+    {id:'prd_2',projectId:P1,sku:'OJ-1L',name:'Orange juice 1 L, 12 pack',unit:'case',price:420},
+    {id:'prd_3',projectId:P1,sku:'EN-250',name:'Energy drink 250 ml, 24 pack',unit:'case',price:610},
+    {id:'prd_4',projectId:P2,sku:'CF-1KG',name:'Coffee beans 1 kg',unit:'bag',price:950},
+    {id:'prd_5',projectId:P2,sku:'TE-100',name:'Green tea, 100 bags',unit:'box',price:240});
+  s.warehouses.push(
+    {id:'wh_1',projectId:P1,name:'Central warehouse',location:'Industrial zone, gate 3'},
+    {id:'wh_2',projectId:P1,name:'East depot',location:'Ring road, exit 12'},
+    {id:'wh_3',projectId:P2,name:'Port warehouse',location:'Harbor road, shed 7'});
+  s.customers.push(
+    {id:'cus_1',projectId:P1,name:'Corner Mart',address:'14 Market Street',phone:'0100 111 2233'},
+    {id:'cus_2',projectId:P1,name:'Greenleaf Grocery',address:'3 Garden Avenue',phone:'0100 222 3344'},
+    {id:'cus_3',projectId:P1,name:'Station Kiosk',address:'Central station, platform 2',phone:'0100 333 4455'},
+    {id:'cus_4',projectId:P2,name:'Harbor View Hotel',address:'1 Corniche Road',phone:'0100 444 5566'},
+    {id:'cus_5',projectId:P2,name:'Blue Anchor Cafe',address:'22 Marina Walk',phone:'0100 555 6677'});
+  ['C-1001','C-1002','C-1003'].forEach((c,i)=>s.customers[i].code=c);['C-2001','C-2002'].forEach((c,i)=>s.customers[3+i].code=c);
+  [['cus_1','Cairo'],['cus_2','Giza'],['cus_3','Gharbia'],['cus_4','Alexandria'],['cus_5','Port Said']].forEach(([c,g])=>find(s.customers,c).govId=govId(g));
+  s.routeGroups.push(
+    {id:'rg_1',projectId:P1,name:'Greater Cairo',govIds:['Cairo','Giza','Qalyubia'].map(govId)},
+    {id:'rg_2',projectId:P1,name:'Delta',govIds:['Gharbia','Monufia','Dakahlia','Sharqia'].map(govId)},
+    {id:'rg_3',projectId:P2,name:'Alexandria and North Coast',govIds:['Alexandria','Beheira','Matrouh'].map(govId)},
+    {id:'rg_4',projectId:P2,name:'Canal and Red Sea',govIds:['Port Said','Ismailia','Suez','Red Sea'].map(govId)});
+  s.salesTeam.push(
+    {id:'st_1',projectId:P1,name:'Nour Hassan',role:'Van sales',phone:'0111 100 2000'},
+    {id:'st_2',projectId:P1,name:'Omar Adel',role:'Key account sales',phone:'0111 100 3000'},
+    {id:'st_3',projectId:P2,name:'Laila Samir',role:'Hospitality sales',phone:'0111 100 4000'});
+  s.agents.push(
+    {id:'ag_1',projectId:P1,name:'Karim Fathy',phone:'0122 700 1000',userId:'u_karim',vehicle:'Van 14'},
+    {id:'ag_2',projectId:P1,name:'Hany Mostafa',phone:'0122 700 2000',userId:'',vehicle:'Truck 3'},
+    {id:'ag_3',projectId:P2,name:'Youssef Ali',phone:'0122 700 3000',userId:'u_youssef',vehicle:'Van 9'});
+  const B=(id,pr,p,no,mfg,exp)=>s.batches.push({id,projectId:pr,productId:p,batchNo:no,mfg,expiry:exp,createdAt:now(),createdBy:'admin'});
+  B('bt_1',P1,'prd_1','SW-2607-A','2026-07-02','2027-07-01');B('bt_2',P1,'prd_1','SW-2609-B','2026-09-05','2027-09-04');
+  B('bt_3',P1,'prd_2','OJ-2608-A','2026-08-10','2026-12-10');B('bt_4',P1,'prd_2','OJ-2609-B','2026-09-12','2027-01-12');
+  B('bt_5',P1,'prd_3','EN-2606-A','2026-06-20','2027-06-19');
+  B('bt_6',P2,'prd_4','CF-2605-A','2026-05-15','2027-05-14');B('bt_7',P2,'prd_5','TE-2604-A','2026-04-01','2028-03-31');
+  const open=(w,p,b,q,pr)=>move(s,{ref:'OPENING',type:'Opening stock',projectId:pr,productId:p,batchId:b,qty:q,from:'X:Opening',to:'W:'+w},'admin');
+  open('wh_1','prd_1','bt_1',250,P1);open('wh_1','prd_1','bt_2',150,P1);open('wh_1','prd_2','bt_3',90,P1);open('wh_1','prd_2','bt_4',60,P1);open('wh_1','prd_3','bt_5',200,P1);
+  open('wh_2','prd_1','bt_2',120,P1);open('wh_2','prd_2','bt_3',60,P1);
+  open('wh_3','prd_4','bt_6',80,P2);open('wh_3','prd_5','bt_7',150,P2);
+  log(s,'Demo data created',null,'Projects, products, setup data and opening stock','','admin',null);
+  return s;
+}
+
+/* ---------- Domain ---------- */
+const find=(list,id)=>list.find(x=>x.id===id);
+const nm=(list,id,fb='')=>(find(list,id)||{}).name||fb;
+function cur(){const u=me();return u?u.username:'system'}
+function me(){return session&&state?state.users.find(u=>u.id===session.uid&&u.active):null}
+function qty(s,loc,pid,bid){return s.stock[loc+'|'+pid+'|'+(bid||'')]||0}
+function adj(s,loc,pid,bid,d){const k=loc+'|'+pid+'|'+(bid||'');s.stock[k]=(s.stock[k]||0)+d}
+function locTotal(s,loc){let t=0;for(const k in s.stock)if(k.startsWith(loc+'|'))t+=s.stock[k];return t}
+function batchNo(s,bid){const b=find(s.batches||[],bid);return b?b.batchNo:''}
+/* Units of a batch across the current project's warehouses */
+/* Stock of a batch across the project's warehouses and sales team */
+function batchAvail(s,bid){const b=find(s.batches,bid);if(!b)return 0;return projLocs(s,b.projectId).reduce((a,l)=>a+qty(s,l[0],b.productId,bid),0)}
+function projLocs(s,pid){return [...s.warehouses.filter(w=>w.projectId===pid).map(w=>['W:'+w.id,w.name,'w']),...s.salesTeam.filter(x=>x.projectId===pid).map(x=>['S:'+x.id,x.name,'s'])]}
+function itemLoc(it){return it.loc||(it.warehouseId?'W:'+it.warehouseId:'')}
+function batchesFor(s,pid){return s.batches.filter(b=>b.productId===pid).slice().sort((a,b)=>(a.expiry||'9999').localeCompare(b.expiry||'9999'))}
+/* Which batches a request line may use: stock-out types need stock on hand, stock-in types may use any batch of the product */
+/* Batches a request line may use, for the searchable batch field */
+function allowedBatches(s,pid,type){const flow=(TYPES[type]||{}).flow;const need=flow==='out'||flow==='move';return batchesFor(s,pid).filter(b=>!need||batchAvail(s,b.id)>0)}
+function batchLabel(s,b){return `${batchAvail(s,b.id)} available${b.expiry?', exp '+fmtD(b.expiry):''}`}
+function findBatch(s,pid,text){const t=String(text||'').trim().toUpperCase();return t?batchesFor(s,pid).find(b=>b.batchNo.toUpperCase()===t):null}
+let dlSeq=0;
+function setupBatchField(line,type){
+  const p=line.querySelector('select[name=item_product]'),inp=line.querySelector('input[name=item_batch]'),dl=line.querySelector('datalist');
+  if(!dl.id){dl.id='bl_'+(++dlSeq);inp.setAttribute('list',dl.id)}
+  if(!p.value){inp.value='';inp.disabled=true;inp.placeholder='Choose product first';dl.innerHTML='';batchHint(line,type);return}
+  const list=allowedBatches(state,p.value,type);
+  dl.innerHTML=list.map(b=>`<option value="${esc(b.batchNo)}">${esc(batchLabel(state,b))}</option>`).join('');
+  inp.disabled=!list.length;
+  const need=['out','move'].includes((TYPES[type]||{}).flow);
+  inp.placeholder=list.length?`Type to find, ${list.length} batch${list.length>1?'es':''}`:(need?'No batch with stock':'No batches for this product');
+  if(inp.value&&!list.some(b=>b.batchNo.toUpperCase()===inp.value.trim().toUpperCase()))inp.value='';
+  if(!inp.value&&list.length===1)inp.value=list[0].batchNo;
+  batchHint(line,type);
+}
+function batchHint(line,type){
+  const p=line.querySelector('select[name=item_product]'),inp=line.querySelector('input[name=item_batch]'),h=line.querySelector('.bhint');
+  h.className='bhint small';
+  if(!p.value){h.textContent='';return}
+  const list=allowedBatches(state,p.value,type);const t=inp.value.trim().toUpperCase();
+  if(!t){h.classList.add('muted');h.textContent=list.length?'Earliest expiry: '+list[0].batchNo:'';return}
+  const exact=list.find(b=>b.batchNo.toUpperCase()===t);
+  if(exact){h.classList.add('okh');h.textContent=batchLabel(state,exact);return}
+  const m=list.filter(b=>b.batchNo.toUpperCase().includes(t));
+  if(m.length){h.classList.add('muted');h.textContent=m.length+' match'+(m.length>1?'es':'')+': '+m.slice(0,3).map(b=>b.batchNo).join(', ')+(m.length>3?'…':'')}
+  else{h.classList.add('bad');h.textContent='No matching batch for this product'}
+}
+function batchOptions(s,pid,type,sel){
+  if(!pid)return '<option value="">Choose product first</option>';
+  const flow=(TYPES[type]||{}).flow;const needStock=flow==='out'||flow==='move';
+  const list=batchesFor(s,pid).filter(b=>!needStock||batchAvail(s,b.id)>0||b.id===sel);
+  if(!list.length)return `<option value="">${needStock?'No batch with stock':'No batches, add one on Products'}</option>`;
+  return '<option value="">Choose batch</option>'+list.map(b=>`<option value="${esc(b.id)}" ${b.id===sel?'selected':''}>${esc(b.batchNo)}, ${batchAvail(s,b.id)} available${b.expiry?', exp '+esc(fmtD(b.expiry)):''}</option>`).join('');
+}
+function migrate(s){
+  if(!s)return s;
+  if(s.v===1){
+    s.batches=s.batches||[];
+    const legacy={};
+    const lb=pid=>{if(legacy[pid])return legacy[pid];const p=find(s.products,pid)||{};const id='bt_legacy_'+pid;s.batches.push({id,projectId:p.projectId,productId:pid,batchNo:(p.sku||'ITEM')+'-OPENING',mfg:'',expiry:'',createdAt:now(),createdBy:'system'});return legacy[pid]=id};
+    const ns={};for(const k in s.stock){const [l,pid]=k.split('|');ns[l+'|'+pid+'|'+lb(pid)]=s.stock[k]}s.stock=ns;
+    s.movements.forEach(m=>{if(!m.batchId)m.batchId=lb(m.productId)});
+    s.requests.forEach(r=>r.items.forEach(it=>{if(!it.batchId)it.batchId=lb(it.productId)}));
+    s.sales.forEach(x=>x.lines.forEach(l=>{if(!l.batchId)l.batchId=lb(l.productId)}));
+    s.v=2;
+  }
+  (s.tasks||[]).forEach(t=>{if(t.status==='Assigned')t.status='Awaiting route'});
+  (s.projects||[]).forEach(pj=>{const cs=(s.customers||[]).filter(c=>c.projectId===pj.id);let n=0;cs.forEach(c=>{if(!c.code){do{n++}while(cs.some(x=>x.code==='C'+pad(n,4)));c.code='C'+pad(n,4)}})});
+  if(!s.govs)s.govs=seedGovs();
+  if(!s.routeGroups)s.routeGroups=[];
+  if(!s.counts)s.counts=[];
+  if(!s.hasStockCheckPage){(s.users||[]).forEach(u=>{if((u.role==='admin'||u.role==='lead')&&u.pages&&!u.pages.includes('stockcheck'))u.pages.push('stockcheck')});s.hasStockCheckPage=true}
+  if(!s.sharedGroups){const keep={};const remap={};
+    s.routeGroups.forEach(g=>{const k=g.name.trim().toLowerCase();if(keep[k]){keep[k].govIds=[...new Set([...keep[k].govIds,...g.govIds])];remap[g.id]=keep[k].id}else{keep[k]=g}});
+    s.routeGroups=Object.values(keep);s.routeGroups.forEach(g=>delete g.projectId);
+    (s.routes||[]).forEach(r=>{if(remap[r.groupId])r.groupId=remap[r.groupId]});s.sharedGroups=true}
+  return s;
+}
+const isLoc=l=>/^[WS]:/.test(l||'');
+function locName(s,l){
+  if(!l)return '';const [k,id]=[l.slice(0,1),l.slice(2)];
+  if(k==='W')return nm(s.warehouses,id,'Warehouse');
+  if(k==='S')return nm(s.salesTeam,id,'Sales agent')+' (sales agent)';
+  if(k==='C')return (custLabel(find(s.customers,id))||'Customer')+' (customer)';
+  if(k==='X')return id;
+  return l;
+}
+function move(s,m,by){
+  if(isLoc(m.from))adj(s,m.from,m.productId,m.batchId,-m.qty);
+  if(isLoc(m.to))adj(s,m.to,m.productId,m.batchId,m.qty);
+  s.movements.push({id:'MOV-'+pad(++s.seq.mov,5),at:now(),by:by||cur(),...m});
+}
+function log(s,action,ref,detail,status,by,projectId){
+  s.log.push({id:'LOG-'+pad(++s.seq.log,5),at:now(),by:by||cur(),projectId:projectId===undefined?((ref&&(s.requests.find(r=>r.ref===ref)||s.counts&&s.counts.find(c=>c.id===ref)||{}).projectId)||(isAll()?null:ui.project)):projectId,action,ref:ref||'',detail:detail||'',status:status||''});
+}
+function nextRef(s){return 'ORD-'+new Date().getFullYear()+'-'+pad(++s.seq.ord,4)}
+function taskOf(s,ref){return s.tasks.find(t=>t.ref===ref)}
+function checkStock(s,r){
+  const need={};
+  r.items.forEach(it=>{const k=itemLoc(it)+'|'+it.productId+'|'+(it.batchId||'');need[k]=(need[k]||0)+Number(it.qty)});
+  for(const k in need){
+    const [loc,pid,bid]=k.split('|');const have=qty(s,loc,pid,bid);
+    if(have<need[k])throw new Error(`${locName(s,loc)} has ${have} of ${nm(s.products,pid)}, batch ${batchNo(s,bid)}. This request needs ${need[k]}.`);
+  }
+}
+function itemsText(s,r){return r.items.map(it=>`${it.qty} × ${nm(s.products,it.productId,'?')}${it.batchId?' (batch '+batchNo(s,it.batchId)+')':''}`).join(', ')}
+function partyText(s,r){return partyBase(s,r)+(r.govId?', '+nm(s.govs||[],r.govId):'')}
+function custLabel(c){return c?(c.code?c.code+' ':'')+c.name:''}
+function custByCode(code){const k=String(code||'').trim().toUpperCase();return k?P(state.customers).find(c=>(c.code||'').toUpperCase()===k):null}
+function custCard(c){return c?`<div class="ccard"><div><span class="muted small">Customer</span><strong>${esc(c.name)}</strong></div><div><span class="muted small">Governorate</span>${esc(govName(c.govId)||'Not set')}</div><div><span class="muted small">Address</span>${esc(c.address||'')}</div><div><span class="muted small">Phone</span>${esc(c.phone||'')}</div></div>`:''}
+function partyBase(s,r){
+  if(r.type==='Transfer')return 'To '+locName(s,r.dest);
+  if(r.type==='Received')return r.supplier?('From '+r.supplier):'Incoming stock';
+  return custLabel(find(s.customers,r.customerId));
+}
+
+/* ---------- File download (claude.ai runtime or plain browser) ---------- */
+async function saveFile(filename,data,mime){
+  let dl=null;try{dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null}catch(e){}
+  if(dl){try{await dl.save({filename,data})}catch(e){if(e&&e.code!=='declined')toast('Could not save the file: '+(e.message||e.code),'bad')}return}
+  try{
+    const blob=data instanceof Blob?data:new Blob([data],{type:mime||(filename.endsWith('.json')?'application/json':filename.endsWith('.csv')?'text/csv':'application/octet-stream')});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);
+  }catch(e){toast('Could not save the file.','bad')}
+}
+
+/* ---------- Persistence ---------- */
+function persist(){
+  lastJson=JSON.stringify(state);
+  try{localStorage.setItem(LS_KEY,lastJson)}catch(e){}
+  if(docRef){docRef.set({json:lastJson,rev:state.rev}).catch(e=>toast('Could not save to shared storage: '+(e.message||e.code),'bad'))}
+}
+function act(fn,okMsg){
+  try{
+    const s=structuredClone(state);
+    fn(s);
+    s.rev++;state=s;persist();render();
+    if(okMsg)toast(okMsg);
+  }catch(e){toast(e.message||String(e),'bad');}
+}
+function softRender(){
+  const a=document.activeElement;
+  if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)&&a.closest('.main')){ui.pending=true;const b=document.getElementById('pending');if(b)b.classList.remove('hide');return}
+  ui.pending=false;render();
+}
+let toastTimer=null;
+function toast(msg,kind){const t=document.getElementById('toast');t.innerHTML=`<div class="toast ${kind||''}" role="status">${esc(msg)}</div>`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.innerHTML='',kind==='bad'?5200:2800)}
+
+/* ---------- Access ---------- */
+function allowedPages(u){return PAGES.map(p=>p[0]).filter(p=>(u.pages||[]).includes(p))}
+function myProjects(u){return u.role==='admin'?state.projects:state.projects.filter(p=>(u.projects||[]).includes(p.id))}
+const ALL='__all';
+const isAll=()=>ui.project===ALL;
+function myProjIds(){const u=me();return u?myProjects(u).map(p=>p.id):[]}
+const P=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project)};
+function projCode(pid){return (find(state.projects,pid)||{}).code||''}
+function projTag(pid){return isAll()?`<span class="ptag">${esc(projCode(pid))}</span>`:''}
+function allGate(what){const projs=myProjects(me());return `<div class="panel"><p style="margin-bottom:10px">You are viewing <strong>all projects</strong>. To ${esc(what)}, choose the project first:</p><div class="row">${projs.map(p=>`<button class="btn ghost sm" data-act="pickProject" data-id="${p.id}">${esc(p.code)}: ${esc(p.name)}</button>`).join('')}</div></div>`}
+function myAgentIds(u){return state.agents.filter(a=>a.userId===u.id).map(a=>a.id)}
+
+/* ---------- Render ---------- */
+function render(){
+  const root=document.getElementById('app');
+  if(!state){root.innerHTML='<div class="login"><p class="muted">Loading…</p></div>';return}
+  const u=me();
+  if(!u){root.innerHTML=(LIVE_MODE&&!state.users.length)?setupView():loginView();return}
+  if(u.mustChange){root.innerHTML=changePwView(u);return}
+  const pages=allowedPages(u);
+  if(!pages.length){root.innerHTML=`<div class="login"><div class="login-card"><h2>No pages assigned</h2><p class="muted" style="margin:8px 0 16px">Your account has no pages yet. Ask the administrator to grant access.</p><button class="btn" data-act="logout">Sign out</button></div></div>`;return}
+  if(!pages.includes(ui.page))ui.page=(LIVE_MODE&&!state.projects.length&&pages.includes('projects'))?'projects':pages[0];
+  const projs=myProjects(u);
+  const allOk=projs.length>1;if(!(ui.project===ALL&&allOk)&&!projs.find(p=>p.id===ui.project)){let last=null;try{last=localStorage.getItem('waybill-lastproj-'+u.id)}catch(e){}ui.project=(last===ALL&&allOk)?ALL:projs.find(p=>p.id===last)?last:allOk?ALL:(projs[0]?projs[0].id:null)}
+  try{if(ui.project)localStorage.setItem('waybill-lastproj-'+u.id,ui.project)}catch(e){}
+  root.innerHTML=shell(u,pages,projs);
+}
+
+function loginView(){
+  return `<div class="login"><div class="login-card">
+    <div class="lockup"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><div class="words"><div><b>F</b>or</div><div><b>D</b>igital</div><div><b>S</b>olutions</div></div></div>
+    <div class="app-name"><b>DAF</b> Logistics App</div>
+    <p class="muted" style="margin-bottom:18px">Sign in with the username and password your administrator created for you.</p>
+    <form data-form="login" class="stack">
+      <label>Username<input name="username" autocomplete="username" required autocapitalize="none"></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      ${ui.loginError?`<p class="err">${esc(ui.loginError)}</p>`:''}
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+    ${LIVE_MODE?'':`<div class="demo"><p class="muted small">Demo accounts for this prototype. Tap one to fill the form.</p>
+      ${DEMO.map(d=>`<button type="button" class="demo-row" data-act="fillDemo" data-u="${d[0]}" data-p="${d[1]}"><strong>${d[0]}</strong><span>${d[2]}</span></button>`).join('')}
+    </div>`}</div></div>`;
+}
+function changePwView(u){
+  return `<div class="login"><div class="login-card">
+    <div class="lockup"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><div class="words"><div><b>F</b>or</div><div><b>D</b>igital</div><div><b>S</b>olutions</div></div></div>
+    <div class="app-name"><b>DAF</b> Logistics App</div>
+    <p style="margin:6px 0 4px"><strong>Set up your administrator account</strong></p>
+    <p class="muted small" style="margin-bottom:16px">You signed in with the temporary password. Choose your own name, username and password to continue. The temporary password stops working after this.</p>
+    <form data-form="changePw" class="stack" novalidate>
+      <label>Full name<input name="name" autocomplete="name" value="${esc(u.name==='Administrator'?'':u.name)}"></label>
+      <label>Username<input name="username" autocapitalize="none" autocomplete="username" spellcheck="false" value="${esc(u.username)}"><span class="small muted" style="font-weight:400">Letters, numbers, dot, dash or underscore. No spaces.</span></label>
+      <label>New password<input name="password" type="password" autocomplete="new-password"><span class="small muted" style="font-weight:400">At least 8 characters.</span></label>
+      <label>Confirm new password<input name="password2" type="password" autocomplete="new-password"></label>
+      <p class="err form-err hide" role="alert"></p>
+      <div class="row"><button class="btn" type="submit">Save and continue</button><button type="button" class="btn plain" data-act="logout">Sign out</button></div>
+    </form>
+  </div></div>`;
+}
+function setupView(){
+  return `<div class="login"><div class="login-card">
+    <div class="lockup"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><div class="words"><div><b>F</b>or</div><div><b>D</b>igital</div><div><b>S</b>olutions</div></div></div>
+    <div class="app-name"><b>DAF</b> Logistics App</div>
+    <p style="margin:6px 0 4px"><strong>Welcome. Let's set up the administrator.</strong></p>
+    <p class="muted small" style="margin-bottom:16px">This app has no data yet. Create the first administrator account. You will use it to create projects, products and the other users.</p>
+    <form data-form="firstAdmin" class="stack" novalidate>
+      <label>Full name<input name="name" autocomplete="name"></label>
+      <label>Username<input name="username" autocapitalize="none" autocomplete="username" spellcheck="false"><span class="small muted" style="font-weight:400">Letters, numbers, dot, dash or underscore. No spaces.</span></label>
+      <label>Password<input name="password" type="password" autocomplete="new-password"><span class="small muted" style="font-weight:400">At least 8 characters.</span></label>
+      <label>Confirm password<input name="password2" type="password" autocomplete="new-password"></label>
+      <p class="err form-err ${ui.loginError?'':'hide'}" role="alert">${esc(ui.loginError||'')}</p>
+      <button class="btn" type="submit">Create administrator and sign in</button>
+    </form>
+    <p class="muted small" style="margin-top:14px">Have a backup file? Sign in first, then use Users and access, Backup and restore. Or <label class="link" style="display:inline;font-size:13px">restore it now<input type="file" accept=".json,application/json" data-chg="restoreData" style="display:none"></label>.</p>
+  </div></div>`;
+}
+
+function navCount(page,u){
+  if(!ui.project)return 0;
+  if(page==='prepare')return P(state.requests).filter(r=>r.status==='New'||r.status==='Failed').length;
+  if(page==='routes')return P(state.tasks).filter(t=>t.status==='Awaiting route').length;
+  if(page==='mytasks'){const ids=myAgentIds(u);return P(state.tasks).filter(t=>ids.includes(t.agentId)&&(t.status==='Routed'||t.status==='In transit')).length}
+  return 0;
+}
+
+function shell(u,pages,projs){
+  const nav=PAGES.filter(p=>pages.includes(p[0])).map(p=>{const c=navCount(p[0],u);return `<button class="nav-i ${ui.page===p[0]?'on':''}" data-act="nav" data-page="${p[0]}" ${ui.page===p[0]?'aria-current="page"':''}>${esc(p[1])}${c?`<span class="nav-c">${c}</span>`:''}</button>`}).join('');
+  const projSel=projs.length?`<select data-chg="project" aria-label="Current project">${projs.length>1?`<option value="${ALL}" ${isAll()?'selected':''}>All my projects (${projs.length})</option>`:''}${projs.map(p=>`<option value="${p.id}" ${p.id===ui.project?'selected':''}>${esc(p.code)}: ${esc(p.name)}</option>`).join('')}</select>`:`<span class="muted small">No projects assigned</span>`;
+  return `<div class="top">
+      <div class="brand"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><span><b>DAF</b> Logistics App</span></div>
+      ${projSel}
+      <div class="who"><div><strong>${esc(u.name)}</strong><span class="muted small">${esc(ROLES[u.role])}</span></div><button class="btn plain sm" data-act="logout">Sign out</button></div>
+    </div>
+    <div class="layout"><nav class="nav" aria-label="Pages">${nav}</nav>
+    <main class="main">
+      <div id="pending" class="banner ${ui.pending?'':'hide'}"><span>Another user changed the data.</span><button class="btn sm" data-act="refresh">Show latest</button></div>
+      ${page(u)}
+    </main></div>`;
+}
+
+function ph(id,sub){const p=PAGES.find(x=>x[0]===id);return `<header class="ph"><div><h1>${esc(p[1])}</h1>${sub?`<p>${sub}</p>`:''}</div></header>`}
+function needProject(){return `<div class="panel empty">No project is selected. ${me().role==='admin'?'Create a project on the Projects page first.':'Ask the administrator to give you access to a project.'}</div>`}
+function refTag(r,big){if(!r)return '';if(/^CNT-/.test(r))return `<span class="code" title="Stock count">${esc(r)}</span>`;const can=allowedPages(me()).includes('report')&&r!=='OPENING';return can?`<button class="ref ${big?'lg':''}" data-act="trace" data-ref="${esc(r)}" title="Trace this reference">${esc(r)}</button>`:`<span class="ref ${big?'lg':''}">${esc(r)}</span>`}
+function opts(list,sel,label,ph){return (ph!==undefined?`<option value="">${esc(ph)}</option>`:'')+list.map(x=>`<option value="${esc(x.id)}" ${x.id===sel?'selected':''}>${esc(label?label(x):x.name)}</option>`).join('')}
+function table(cols,rows,emptyMsg){
+  if(!rows.length)return `<div class="tbl"><div class="empty">${esc(emptyMsg||'Nothing here yet.')}</div></div>`;
+  return `<div class="tbl"><table><thead><tr>${cols.map(c=>`<th class="${c.num?'num':''}">${esc(c.l)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr class="${r._cls||''}">${r.map((v,i)=>`<td class="${cols[i]&&cols[i].num?'num':''}">${v&&v.h!==undefined?v.h:esc(v)}</td>`).join('')}</tr>${r._after||''}`).join('')}</tbody></table></div>`;
+}
+const H=h=>({h});
+
+function page(u){
+  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,report:pgReport,users:pgUsers};
+  return map[ui.page](u);
+}
+
+/* ---------- Chain (order trail) ---------- */
+function chain(s,r){
+  const t=taskOf(s,r.ref);const failed=r.status==='Failed'||r.status==='Returned to stock';
+  const last=r.type==='Delivery'?['Sale',s.sales.some(x=>x.ref===r.ref)]:r.type==='Documentation'?['No stock',r.status==='Completed']:['Stock',s.movements.some(m=>m.ref===r.ref)];
+  const steps=[['Request',true],['Prepared',!!r.preparedAt],['Routed',!!(t&&t.routeId)||['In transit','Completed'].includes(r.status)],[r.status==='Returned to stock'?'Returned':failed?'Failed':'Done',r.status==='Completed'||failed],last];
+  return `<div class="chain" aria-label="Order trail">${steps.map(([l,d],i)=>`<span class="ch ${d?(failed&&i===3?'fail':'done'):''}"><i></i>${esc(l)}</span>`).join('')}</div>`;
+}
+
+/* ---------- Pages ---------- */
+function dayStr(off){const d=new Date();d.setDate(d.getDate()+off);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)}
+function initials(n){return String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
+function stopTitle(r){
+  if(r.type==='Transfer')return 'To '+locName(state,r.dest).replace(/ \((sales agent|customer)\)$/,'');
+  if(r.type==='Received')return r.supplier?'From '+r.supplier:'Receive stock';
+  const c=find(state.customers,r.customerId);return c?c.name:'Customer';
+}
+function routeMetro(rt){
+  const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
+  const closed=x=>['Completed','Failed'].includes(x.t.status);
+  const moved=x=>closed(x)||x.t.status==='In transit';
+  const done=stops.filter(x=>x.t.status==='Completed').length,failed=stops.filter(x=>x.t.status==='Failed').length,pend=stops.length-done-failed;
+  const allClosed=stops.length&&stops.every(closed);
+  const ag=find(state.agents,rt.agentId)||{};
+  const w=n=>stops.length?(100*n/stops.length).toFixed(1)+'%':'0';
+  const nodes=[`<li class="mnode endpt start"><span class="mdot" aria-hidden="true">GO</span><div class="mlbl"><strong>Start</strong><span class="muted">${esc(ag.vehicle||'Departure')}</span></div></li>`];
+  stops.forEach((x,i)=>{const c=x.r.customerId&&find(state.customers,x.r.customerId);const icon=x.t.status==='Completed'?'✓':x.t.status==='Failed'?'✕':String(i+1);
+    nodes.push(`<li class="mnode s-${slug(x.t.status)} ${moved(x)?'trav':''}"><span class="mdot" aria-hidden="true">${icon}</span><div class="mlbl"><span class="muted">Stop ${i+1}${c&&c.code?', '+esc(c.code):''}</span><strong>${esc(stopTitle(x.r))}</strong><span class="muted">${esc(govName(x.r.govId)||x.r.type)}</span>${refTag(x.r.ref)}${st(x.t.status==='Routed'?'Not started':x.t.status)}${x.t.failReason?`<span class="small" style="color:var(--bad)">${esc(x.t.failReason)}</span>`:''}</div></li>`)});
+  nodes.push(`<li class="mnode endpt finish ${allClosed?'trav done':''}"><span class="mdot" aria-hidden="true">${allClosed?'✓':'END'}</span><div class="mlbl"><strong>Finish</strong><span class="muted">${allClosed?'Route done':pend+' stop'+(pend===1?'':'s')+' left'}</span></div></li>`);
+  return `<div class="rmap-route">
+    <div class="rmap-head"><span class="code" style="font-size:15px">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.note?`<span>${esc(rt.note)}</span>`:''}
+      <span class="who-a"><span class="avatar" aria-hidden="true">${esc(initials(ag.name))}</span><span><span class="muted small">Assigned to</span> <strong>${esc(ag.name||'No agent')}</strong></span></span>
+      ${rt.groupId?`<span class="muted small">${esc(nm(state.routeGroups,rt.groupId))}</span>`:''}
+      <span class="rmap-prog">${done} done${failed?`, ${failed} failed`:''} of ${stops.length}<span class="abar" role="img" aria-label="${done} completed, ${pend} pending, ${failed} failed"><i class="b-done" style="width:${w(done)}"></i><i class="b-pend" style="width:${w(pend)}"></i><i class="b-fail" style="width:${w(failed)}"></i></span>${st(routeStatus(rt))}</span>
+    </div>
+    <div class="metro-scroll"><ol class="metro" aria-label="Stops of ${esc(rt.name)}, start to finish">${nodes.join('')}</ol></div>
+  </div>`;
+}
+function routeMapPanel(){
+  const days=[['Today',dayStr(0)],['Tomorrow',dayStr(1)]];
+  return `<div class="panel"><h2 style="margin-bottom:14px">Route map</h2>${days.map(([lbl,d])=>{const rs=P(state.routes).filter(r=>r.date===d).sort((a,b)=>a.name.localeCompare(b.name));
+    return `<section class="rmap-day"><h3>${lbl} <span class="muted small" style="font-family:var(--body);font-weight:500">${esc(fmtD(d))}, ${rs.length} route${rs.length===1?'':'s'}</span></h3>${rs.length?rs.map(routeMetro).join(''):`<p class="muted small" style="padding:10px 0 4px">No routes planned for ${lbl.toLowerCase()}.</p>`}</section>`}).join('')}</div>`;
+}
+function agentPanel(){
+  const per=ui.agentPeriod||'all';
+  const t0=today();const back=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)};
+  const from=per==='today'?t0:per==='7'?back(6):per==='30'?back(29):'';
+  const inP=t=>per==='today'?t.date===t0:(!from||(t.date||'')>=from);
+  const T=P(state.tasks).filter(t=>t.agentId&&t.status!=='Awaiting route'&&inP(t));
+  const rows=P(state.agents).map(a=>{
+    const ts=T.filter(t=>t.agentId===a.id);
+    const c=k=>ts.filter(t=>t.status===k).length;
+    const routed=c('Routed'),transit=c('In transit'),done=c('Completed'),failed=c('Failed');
+    const routes=new Set(ts.map(t=>t.routeId).filter(Boolean)).size;
+    return {a,total:ts.length,pending:routed+transit,routed,transit,done,failed,routes,todayOpen:ts.filter(t=>t.date===t0&&['Routed','In transit'].includes(t.status)).length};
+  }).sort((x,y)=>y.pending-x.pending||y.total-x.total||x.a.name.localeCompare(y.a.name));
+  const sum=k=>rows.reduce((a,r)=>a+r[k],0);
+  const awaiting=P(state.tasks).filter(t=>t.status==='Awaiting route').length;
+  const bar=r=>{if(!r.total)return '<span class="muted small">No tasks</span>';const w=n=>(100*n/r.total).toFixed(1)+'%';
+    return `<div class="abar" role="img" aria-label="${r.done} completed, ${r.pending} pending, ${r.failed} failed"><i class="b-done" style="width:${w(r.done)}"></i><i class="b-pend" style="width:${w(r.pending)}"></i><i class="b-fail" style="width:${w(r.failed)}"></i></div>`};
+  const rate=r=>r.total?Math.round(100*r.done/r.total)+'%':'';
+  const periods=[['today','Today'],['7','Last 7 days'],['30','Last 30 days'],['all','All time']];
+  const body=rows.map(r=>[H(`<strong>${esc(r.a.name)}</strong>${r.a.vehicle?`<br><span class="muted small">${esc(r.a.vehicle)}</span>`:''}`),String(r.routes),{h:`<strong>${r.total}</strong>`},{h:r.pending?`<strong style="color:var(--warn)">${r.pending}</strong>`:'0'},String(r.routed),String(r.transit),{h:r.done?`<span style="color:var(--ok)">${r.done}</span>`:'0'},{h:r.failed?`<span class="neg">${r.failed}</span>`:'0'},rate(r),H(bar(r))]);
+  if(rows.length){const tot=[H('<strong>All agents</strong>'),String(sum('routes')),{h:`<strong>${sum('total')}</strong>`},{h:`<strong>${sum('pending')}</strong>`},String(sum('routed')),String(sum('transit')),String(sum('done')),String(sum('failed')),sum('total')?Math.round(100*sum('done')/sum('total'))+'%':'',''];body.push(tot)}
+  return `<div class="panel"><div class="spread" style="margin-bottom:12px"><h2>Logistics agents</h2>
+    <div class="tabs" style="margin:0;border:0" role="tablist">${periods.map(([k,l])=>`<button class="tab ${per===k?'on':''}" role="tab" aria-selected="${per===k}" data-act="agentPeriod" data-k="${k}">${l}</button>`).join('')}</div></div>
+    ${table([{l:'Agent'},{l:'Routes',num:1},{l:'Assigned',num:1},{l:'Pending',num:1},{l:'Not started',num:1},{l:'In transit',num:1},{l:'Completed',num:1},{l:'Failed',num:1},{l:'Done rate',num:1},{l:'Progress'}],body,'No logistics agents in this project yet.')}
+    <p class="muted small" style="margin-top:8px">Period uses the route date. Pending = not started + in transit. <span class="lg-k b-done"></span> completed <span class="lg-k b-pend"></span> pending <span class="lg-k b-fail"></span> failed</p>
+  </div>`;
+}
+function pgDashboard(u){
+  if(!ui.project)return ph('dashboard')+needProject();
+  const R=P(state.requests),T=P(state.tasks),S=P(state.sales);
+  const c=st=>R.filter(r=>r.status===st).length;
+  const failedAll=c('Failed')+c('Returned to stock');const closed=c('Completed')+failedAll;
+  const nexts=[];
+  const pages=allowedPages(u);
+  if(pages.includes('prepare')&&(c('New')+c('Failed')))nexts.push([`${c('New')+c('Failed')} request(s) to prepare or reassign`,'prepare']);
+  if(pages.includes('routes')&&T.filter(t=>t.status==='Awaiting route').length)nexts.push([`${T.filter(t=>t.status==='Awaiting route').length} task(s) waiting for a route`,'routes']);
+  if(pages.includes('requests'))nexts.push(['Create a new request','requests']);
+  const recent=[...R].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,8);
+  return ph('dashboard','Where every order stands right now, from request to stock.')+`
+  <div class="stats">
+    <div class="stat"><b>${R.length}</b><span>Total requests</span></div>
+    <div class="stat"><b>${c('New')}</b><span>New, to prepare</span></div>
+    <div class="stat"><b>${c('Prepared')}</b><span>Prepared, awaiting route</span></div>
+    <div class="stat"><b>${c('Routed')+c('In transit')}</b><span>On a route</span></div>
+    <div class="stat"><b style="color:var(--ok)">${c('Completed')}</b><span>Completed</span></div>
+    <div class="stat"><b class="${failedAll?'neg':''}">${failedAll}</b><span>Failed${c('Returned to stock')?`, ${c('Returned to stock')} returned to stock`:''}</span></div>
+    <div class="stat"><b>${closed?Math.round(100*c('Completed')/closed)+'%':'–'}</b><span>Success rate${closed?` (${c('Completed')} of ${closed} closed)`:''}</span></div>
+  </div>
+  ${nexts.length?`<div class="panel"><h2>Next actions</h2><div class="row">${nexts.map(n=>`<button class="btn ghost" data-act="nav" data-page="${n[1]}">${esc(n[0])}</button>`).join('')}</div></div>`:''}
+  ${routeMapPanel()}
+  ${agentPanel()}
+  <div class="panel"><h2>Latest orders</h2>
+  ${table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Status'},{l:'Trail'}],recent.map(r=>[H(refTag(r.ref)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),H(st(r.status)),H(chain(state,r))]),'No requests yet in this project.')}
+  </div>`;
+}
+
+function pgProjects(u){
+  const rows=state.projects.map(p=>[H(`<span class="code">${esc(p.code)}</span>`),p.name,p.desc||'',String(state.products.filter(x=>x.projectId===p.id).length),String(state.requests.filter(x=>x.projectId===p.id).length),fmtT(p.createdAt)]);
+  return ph('projects','Every product, customer, warehouse and order belongs to one project. Users only see the projects they are given.')+`
+  <div class="panel"><h2>Create project</h2>
+  <form data-form="project" class="fgrid">
+    <label>Project code<input name="code" required maxlength="8" placeholder="e.g. NRD"></label>
+    <label>Project name<input name="name" required placeholder="e.g. North region distribution"></label>
+    <label>Description<input name="desc" placeholder="Optional"></label>
+    <button class="btn" type="submit">Create project</button>
+  </form></div>
+  ${table([{l:'Code'},{l:'Name'},{l:'Description'},{l:'Products',num:1},{l:'Requests',num:1},{l:'Created'}],rows,'No projects yet.')}`;
+}
+
+function pbLine(first){
+  return `<div class="pbline"><label>Batch number<input name="pb_no" ${first?'required':''} placeholder="e.g. SW-2610-A" autocapitalize="characters"></label>
+    <label>Manufactured<input name="pb_mfg" type="date"></label>
+    <label>Expiry<input name="pb_exp" type="date"></label>
+    <button type="button" class="btn plain sm" data-act="rmRow" data-box="pbLines" aria-label="Remove batch" style="margin-bottom:4px">Remove</button></div>`;
+}
+function pgProducts(u){
+  const projs=myProjects(u);
+  const rows=state.products.filter(p=>projs.some(x=>x.id===p.projectId)).map(p=>[H(`<span class="code">${esc(p.sku)}</span>`),p.name,p.unit,{h:money(p.price)},nm(state.projects,p.projectId)]);
+  return ph('products','Create each product and link it to its project.')+`
+  <div class="panel"><h2>Create product</h2>
+  <form data-form="product" class="fgrid">
+    <label>Project<select name="projectId" required>${opts(projs,ui.project,p=>p.code+': '+p.name)}</select></label>
+    <label>SKU<input name="sku" required placeholder="e.g. SW-500"></label>
+    <label>Product name<input name="name" required></label>
+    <label>Unit<input name="unit" required value="case"></label>
+    <label>Unit price<input name="price" type="number" min="0" step="0.01" required value="0"></label>
+    <fieldset style="grid-column:1/-1"><legend>Batches for this product (at least one)</legend>
+      <div id="pbLines" class="stack">${pbLine(true)}</div>
+      <button type="button" class="btn ghost sm" data-act="addPbLine" style="margin-top:10px">Add another batch</button>
+    </fieldset>
+    <div><button class="btn" type="submit">Create product</button></div>
+  </form>
+  <template id="pbTpl">${pbLine(false)}</template></div>
+  ${table([{l:'SKU'},{l:'Product'},{l:'Unit'},{l:'Unit price',num:1},{l:'Project'}],rows,'No products yet.')}
+  ${isAll()?`<h2 style="margin:26px 0 6px">Batches</h2>`+allGate('see and add batches'):ui.project?pgBatches():''}`;
+}
+function pgBatches(){
+  const B=P(state.batches).slice().sort((a,b)=>(nm(state.products,a.productId)).localeCompare(nm(state.products,b.productId))||(a.expiry||'').localeCompare(b.expiry||''));
+  const soon=d=>d&&(new Date(d+'T00:00:00')-new Date())/864e5<60;
+  const rows=B.map(b=>{const tot=batchAvail(state,b.id);return [H(`<span class="code">${esc(b.batchNo)}</span>`),nm(state.products,b.productId),fmtD(b.mfg),H(b.expiry?`<span class="${soon(b.expiry)?'neg':''}">${esc(fmtD(b.expiry))}</span>`:''),String(tot),P(state.warehouses).map(w=>{const q=qty(state,'W:'+w.id,b.productId,b.id);return q?w.name+': '+q:''}).filter(Boolean).join(', ')]});
+  return `<h2 style="margin:26px 0 6px">Batches in ${esc(nm(state.projects,ui.project))}</h2>
+  <p class="muted" style="margin-bottom:12px">Each product can hold several batches. Requests choose a batch per product, and stock is tracked per batch.</p>
+  <div class="panel"><form data-form="batch" class="fgrid">
+    <label>Product<select name="productId" required>${opts(P(state.products),'',p=>p.sku+' '+p.name,'Choose product')}</select></label>
+    <label>Batch number<input name="batchNo" required placeholder="e.g. SW-2610-A"></label>
+    <label>Manufactured<input name="mfg" type="date"></label>
+    <label>Expiry<input name="expiry" type="date"></label>
+    <button class="btn" type="submit">Add batch</button>
+  </form></div>
+  ${table([{l:'Batch'},{l:'Product'},{l:'Manufactured'},{l:'Expiry'},{l:'In warehouses',num:1},{l:'Where'}],rows,'No batches yet. Add the first one above.')}`;
+}
+
+function pgSetup(u){
+  if(!ui.project)return ph('setup')+needProject();
+  const tabs=[['customers','Customers'],['govs','Governorates'],['groups','Route groups'],['warehouses','Warehouses'],['sales','Sales team'],['agents','Logistics agents'],['opening','Opening stock']];
+  const t=ui.setupTab;let body='';
+  if(t==='customers'){
+    body=`<div class="panel"><form data-form="customer" class="fgrid">
+      <label>Customer ID<input name="code" required placeholder="e.g. C-1004" autocapitalize="characters"></label><label>Customer name<input name="name" required></label><label>Governorate<select name="govId">${opts(govsSorted(),'',null,'Choose governorate')}</select></label><label>Address<input name="address" required></label><label>Phone<input name="phone"></label>
+      <button class="btn" type="submit">Add customer</button></form></div>`+
+      table([{l:'Customer ID'},{l:'Customer'},{l:'Governorate'},{l:'Address'},{l:'Phone'},{l:''}],P(state.customers).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(c=>{const row=[H(`<span class="code">${esc(c.code||'')}</span>`),c.name,govName(c.govId),c.address,c.phone||'',H(`<button class="btn plain sm" data-act="expand" data-id="${c.id}">Edit</button>`)];
+        if(ui.expand===c.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="6"><form data-form="customerEdit" data-id="${c.id}" class="fgrid"><label>Customer ID<input name="code" required value="${esc(c.code||'')}"></label><label>Customer name<input name="name" required value="${esc(c.name)}"></label><label>Governorate<select name="govId">${opts(govsSorted(),c.govId,null,'Choose governorate')}</select></label><label>Address<input name="address" required value="${esc(c.address||'')}"></label><label>Phone<input name="phone" value="${esc(c.phone||'')}"></label><div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+        return row}),'No customers yet.');
+  }else if(t==='govs'){
+    const G=govsSorted();
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Governorates are shared by all projects. They fill the Governorate list on requests and customers, and are used to build route groups.</p><form data-form="gov" class="fgrid">
+      <label>Governorate name<input name="name" required></label><button class="btn" type="submit">Add governorate</button></form></div>`+
+      table([{l:'Governorate'},{l:'Customers',num:1},{l:'Requests',num:1},{l:'Route groups'}],G.map(g=>[g.name,String(P(state.customers).filter(c=>c.govId===g.id).length),String(P(state.requests).filter(r=>r.govId===g.id).length),state.routeGroups.filter(x=>x.govIds.includes(g.id)).map(x=>x.name).join(', ')]),'No governorates yet.');
+  }else if(t==='groups'){
+    const rows=state.routeGroups.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(g=>{const row=[H(`<strong>${esc(g.name)}</strong>`),g.govIds.map(govName).join(', '),String(state.routes.filter(r=>r.groupId===g.id).length),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${g.id}">Edit</button><button class="btn plain sm" data-act="delGroup" data-id="${g.id}">Delete</button></div>`)];
+      if(ui.expand===g.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="4"><form data-form="groupEdit" data-id="${g.id}">${groupFields(g)}<div class="row" style="margin-top:12px"><button class="btn" type="submit">Save group</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}return row});
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">A route group joins several governorates, so one route can cover all of them. Route groups are shared by all projects: create a group once and it is available when creating routes in every project.</p><form data-form="group">${groupFields(null)}<div style="margin-top:12px"><button class="btn" type="submit">Create route group</button></div></form></div>`+
+      table([{l:'Route group'},{l:'Governorates'},{l:'Routes, all projects',num:1},{l:''}],rows,'No route groups yet. Create the first one above.');
+  }else if(t==='warehouses'){
+    body=`<div class="panel"><form data-form="warehouse" class="fgrid">
+      <label>Warehouse name<input name="name" required></label><label>Location<input name="location"></label>
+      <button class="btn" type="submit">Add warehouse</button></form></div>`+
+      table([{l:'Warehouse'},{l:'Location'},{l:'Units in stock',num:1}],P(state.warehouses).map(w=>[w.name,w.location||'',String(locTotal(state,'W:'+w.id))]),'No warehouses yet.');
+  }else if(t==='sales'){
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Sales agents can receive stock through Transfer requests.</p><form data-form="salesperson" class="fgrid">
+      <label>Name<input name="name" required></label><label>Role<input name="role" placeholder="e.g. Van sales"></label><label>Phone<input name="phone"></label>
+      <button class="btn" type="submit">Add sales agent</button></form></div>`+
+      table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1}],P(state.salesTeam).map(x=>[x.name,x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id))]),'No sales team yet.');
+  }else if(t==='agents'){
+    const agentUsers=state.users.filter(x=>x.role==='agent'&&x.active);
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so they can see their routes on the My tasks page.</p><form data-form="agent" class="fgrid">
+      <label>Agent name<input name="name" required></label><label>Phone<input name="phone"></label><label>Vehicle<input name="vehicle"></label>
+      <label>Login account<select name="userId">${opts(agentUsers,'',x=>x.name+' ('+x.username+')','No login')}</select></label>
+      <button class="btn" type="submit">Add agent</button></form></div>`+
+      table([{l:'Agent'},{l:'Phone'},{l:'Vehicle'},{l:'Login'},{l:'Open tasks',num:1}],P(state.agents).map(a=>[a.name,a.phone||'',a.vehicle||'',a.userId?(find(state.users,a.userId)||{}).username||'':'None',String(P(state.tasks).filter(t=>t.agentId===a.id&&!['Completed','Failed'].includes(t.status)).length)]),'No agents yet.');
+  }else{
+    const mv=P(state.movements).filter(m=>m.ref==='OPENING').slice().reverse();
+    const here=P(state.products),elsewhere=state.products.filter(p=>p.projectId!==ui.project&&myProjects(u).some(x=>x.id===p.projectId));
+    const pj=find(state.projects,ui.project)||{};
+    body=`<div class="panel"><p class="note" style="margin-bottom:12px">Showing products and warehouses of project <strong>${esc(pj.code)}: ${esc(pj.name)}</strong>. To add opening stock for another project, switch the project at the top of the page.</p>
+      ${!here.length?`<p class="err" style="margin-bottom:10px">This project has no products yet.${elsewhere.length?' Products in your other projects: '+esc(elsewhere.map(p=>p.sku+' '+p.name+' ('+((find(state.projects,p.projectId)||{}).code||'')+')').join(', '))+'.':''}</p>`:''}
+      ${!P(state.warehouses).length?`<p class="err" style="margin-bottom:10px">This project has no warehouses yet. Add one on the Warehouses tab first.</p>`:''}
+      <p class="muted small" style="margin-bottom:10px">Opening stock sets the starting balance of a warehouse before any orders move.</p><form data-form="opening" class="fgrid">
+      <label>Warehouse<select name="wh" required>${opts(P(state.warehouses),'',null,'Choose warehouse')}</select></label>
+      <label>Product<select name="product" required data-chg="lineProduct">${opts(P(state.products),'',p=>p.sku+' '+p.name,'Choose product')}</select></label>
+      <label>Batch<select name="batch" required data-kind="Received">${batchOptions(state,'','Received')}</select></label>
+      <label>Quantity<input name="qty" type="number" min="1" step="1" required></label>
+      <button class="btn" type="submit">Add opening stock</button></form></div>`+
+      table([{l:'When'},{l:'Warehouse'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'By'}],mv.map(m=>[fmtT(m.at),locName(state,m.to),nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),m.by]),'No opening stock yet.');
+  }
+  if(isAll()&&!['govs','groups'].includes(t))body=body.replace(/^<div class="panel">[\s\S]*?<\/form><\/div>/,allGate('add or change '+(tabs.find(x=>x[0]===t)||['',''])[1].toLowerCase()));
+  return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+
+    `<div class="tabs" role="tablist">${tabs.map(x=>`<button class="tab ${t===x[0]?'on':''}" role="tab" aria-selected="${t===x[0]}" data-act="setupTab" data-tab="${x[0]}">${x[1]}</button>`).join('')}</div>`+body;
+}
+
+function groupFields(g){
+  return `<div class="fgrid"><label>Group name<input name="name" required value="${esc(g?g.name:'')}" placeholder="e.g. Delta"></label></div>
+  <fieldset style="margin-top:12px"><legend>Governorates in this group</legend><div class="checks">${govsSorted().map(x=>`<label><input type="checkbox" name="govs" value="${x.id}" ${g&&g.govIds.includes(x.id)?'checked':''}>${esc(x.name)}</label>`).join('')}</div></fieldset>`;
+}
+function productLine(prods,first){
+  return `<div class="line"><label>Product<select name="item_product" data-chg="lineProduct">${opts(prods,'',p=>p.sku+' '+p.name,'Choose product')}</select></label>
+    <label>Batch<input name="item_batch" class="bfind" data-inp="batchFind" placeholder="Choose product first" disabled autocomplete="off" spellcheck="false"><datalist></datalist><span class="bhint small muted" aria-live="polite"></span></label>
+    <label>Quantity<input name="item_qty" type="number" min="1" step="1"></label>
+    <button type="button" class="btn plain sm" data-act="rmLine" aria-label="Remove line" style="margin-bottom:4px">Remove</button></div>`;
+}
+
+function pgRequests(u){
+  if(!ui.project)return ph('requests')+needProject();
+  const prods=P(state.products);
+  const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
+  const f=ui.reqFilter;
+  const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`)]});
+  return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
+  ${isAll()?allGate('create a request'):`<div class="panel"><h2>New request</h2>
+  <form data-form="request" class="stack" id="reqForm">
+    <div class="fgrid">
+      <label>Request type<select name="type" data-chg="reqType" required>${Object.keys(TYPES).map(t=>`<option>${t}</option>`).join('')}</select></label>
+      <label>Governorate<select name="govId" required>${opts(govsSorted(),'',null,'Choose governorate')}</select></label>
+      <label class="w-customer">Customer ID<input name="custCode" data-inp="custId" list="custCodes" placeholder="Type the customer ID" autocomplete="off" autocapitalize="characters" spellcheck="false"><datalist id="custCodes">${P(state.customers).map(c=>`<option value="${esc(c.code||'')}">${esc(c.name)}</option>`).join('')}</datalist></label>
+      <label class="w-customer">Customer<select name="customerId" data-chg="reqCustomer">${opts(P(state.customers),'',custLabel,'Choose customer')}</select></label>
+      <label class="w-transfer hide">Transfer to<select name="dest"><option value="">Choose sales agent or warehouse</option>${dests}</select></label>
+      <label class="w-received hide">Supplier or source<input name="supplier" placeholder="Optional"></label>
+    </div>
+    <div id="custCard" class="w-customer"></div>
+    <p class="note" id="typeHelp">${esc(TYPES.Delivery.help)}</p>
+    <div id="lines" class="stack">${productLine(prods,true)}</div>
+    <div><button type="button" class="btn ghost sm" data-act="addLine">Add product line</button> <span class="muted small w-doc hide">Products are optional for documentation.</span></div>
+    <label>Notes<textarea name="notes" placeholder="Optional instructions for the team"></textarea></label>
+    <div><button class="btn" type="submit">Create request</button></div>
+  </form>
+  <template id="lineTpl">${productLine(prods,false)}</template>
+  </div>`}
+  <div class="spread" style="margin-bottom:10px"><h2>Requests${isAll()?' in all projects':' in this project'}</h2>
+    <label style="flex-direction:row;align-items:center;gap:8px">Status<select data-chg="reqFilter" style="width:auto"><option value="">All</option>${['New','Prepared','Routed','In transit','Completed','Failed'].map(s=>`<option ${s===f?'selected':''}>${s}</option>`).join('')}</select></label></div>
+  ${table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent'},{l:'Task date'},{l:'Created'}],rows,'No requests yet. Create the first one above.')}`;
+}
+
+function preparePanel(r){
+  const T=TYPES[r.type];const t=taskOf(state,r.ref);
+  const locs=projLocs(state,r.projectId).filter(l=>!(r.type==='Transfer'&&r.dest===l[0]));
+  let lines='';
+  if(T.flow!=='none'){
+    lines=`<div class="tbl" style="margin-bottom:12px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>${esc(T.wh)} (warehouse or sales team)</th></tr></thead><tbody>${r.items.map((it,i)=>`<tr><td>${esc(nm(state.products,it.productId))}</td><td class="code">${esc(batchNo(state,it.batchId))}</td><td class="num">${it.qty}</td><td><select name="wh_${i}" required aria-label="Stock location for ${esc(nm(state.products,it.productId))}"><option value="">Choose warehouse or sales team</option>${[['w','Warehouses'],['s','Sales team']].map(([k,lbl])=>{const L=locs.filter(l=>l[2]===k);return L.length?`<optgroup label="${lbl}">${L.map(l=>{const a=qty(state,l[0],it.productId,it.batchId);return `<option value="${l[0]}" ${itemLoc(it)===l[0]?'selected':''}>${esc(l[1])}, ${a} in stock</option>`}).join('')}</optgroup>`:''}).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
+  }else{
+    lines=`<p class="note" style="margin-bottom:12px">Documentation has no stock movement. Save to mark it prepared.</p>`;
+  }
+  const canBack=r.status==='Failed'&&['out','move'].includes(T.flow)&&r.items.length;
+  const mode=canBack?(ui.failMode||'reassign'):'reassign';
+  const choice=canBack?`<div class="seg" role="radiogroup" aria-label="What to do with this failed request" style="margin-bottom:14px">
+      <button type="button" role="radio" aria-checked="${mode==='reassign'}" class="${mode==='reassign'?'on':''}" data-act="failMode" data-k="reassign">Reassign to a new route</button>
+      <button type="button" role="radio" aria-checked="${mode==='back'}" class="${mode==='back'?'on':''}" data-act="failMode" data-k="back">Back to stock</button></div>`:'';
+  if(mode==='back'){
+    return `<tr class="expanded"><td colspan="7">${choice}<form data-form="backStock" data-id="${esc(r.id)}">
+      <p class="muted small" style="margin-bottom:10px">Closes this request without a sale. Choose where each product goes back to. Keeping the same location means no stock moves.</p>
+      <div class="tbl" style="margin-bottom:12px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>Taken from</th><th>Add back to</th></tr></thead><tbody>${r.items.map((it,i)=>{const src=itemLoc(it);const all=projLocs(state,r.projectId);return `<tr><td>${esc(nm(state.products,it.productId))}</td><td class="code">${esc(batchNo(state,it.batchId))}</td><td class="num">${it.qty}</td><td>${esc(locName(state,src)||'Not set')}</td><td><select name="to_${i}" required aria-label="Add ${esc(nm(state.products,it.productId))} back to">${[['w','Warehouses'],['s','Sales team']].map(([k,lbl])=>{const L=all.filter(l=>l[2]===k);return L.length?`<optgroup label="${lbl}">${L.map(l=>`<option value="${l[0]}" ${l[0]===src?'selected':''}>${esc(l[1])}, ${qty(state,l[0],it.productId,it.batchId)} in stock${l[0]===src?' (same place)':''}</option>`).join('')}</optgroup>`:''}).join('')}</select></td></tr>`}).join('')}</tbody></table></div>
+      <div class="row"><button class="btn" type="submit">Confirm back to stock</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div>
+    </form></td></tr>`;
+  }
+  return `<tr class="expanded"><td colspan="7">${choice}<form data-form="prepare" data-id="${esc(r.id)}">
+    ${r.type==='Transfer'?`<p style="margin-bottom:8px">Destination: <strong>${esc(locName(state,r.dest))}</strong></p>`:''}
+    ${r.notes?`<p class="muted small" style="margin-bottom:8px">Notes: ${esc(r.notes)}</p>`:''}
+    ${lines}
+    <p class="muted small" style="margin-bottom:10px">${r.status==='Failed'?'Reassigning sends this request to a new route. If the agent completes it, stock is deducted and a sale is recorded. To cancel it and keep the stock, choose Back to stock above.':'The agent and date are set when you put this task on a route.'}</p>
+    <div class="fgrid">
+      <div class="row"><button class="btn" type="submit">${r.status==='Failed'?'Reassign: try this delivery again':t?'Save and send back to routing':'Save as prepared'}</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div>
+    </div></form></td></tr>`;
+}
+
+function pgPrepare(u){
+  if(!ui.project)return ph('prepare')+needProject();
+  const R=P(state.requests).filter(r=>['New','Prepared','Failed'].includes(r.status));
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
+  const locked=P(state.requests).filter(r=>['Routed','In transit'].includes(r.status)).length;
+  return ph('prepare','Choose where the stock for each product comes from or goes to, a warehouse or a sales team member. This creates the task; the agent and date are set on the route.')+
+  table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent and date'},{l:''}],rows,'Nothing to prepare. New requests from Operations appear here.')+
+  (locked?`<p class="muted small" style="margin-top:10px">${locked} request(s) are already on a route and can no longer be edited here.</p>`:'');
+}
+
+/* Trip serial per project: TRIP-<project code>-0001 */
+function tripNo(s,pid,peek){s.seq.trip=s.seq.trip||{};const pj=find(s.projects,pid)||{};const n=(s.seq.trip[pid]||0)+1;if(!peek)s.seq.trip[pid]=n;return 'TRIP-'+String(pj.code||'X').toUpperCase()+'-'+pad(n,4)}
+function routeGovs(rt){return [...new Set(rt.taskIds.map(id=>{const t=find(state.tasks,id);const r=t&&find(state.requests,t.requestId);return r&&r.govId}).filter(Boolean))]}
+function routeStatus(rt){const ts=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean);if(!ts.length)return 'Planned';if(ts.every(t=>['Completed','Failed'].includes(t.status)))return 'Done';if(ts.some(t=>['In transit','Completed','Failed'].includes(t.status)))return 'In progress';return 'Planned'}
+
+function stopBody(t,r){
+  const T=TYPES[r.type];let where='';
+  if(T.customer){const c=find(state.customers,r.customerId)||{};where=`<strong>${esc(custLabel(c))}</strong><br><span class="muted small">${r.govId?esc(govName(r.govId))+', ':''}${esc(c.address||'')}${c.phone?', '+esc(c.phone):''}</span>`}
+  else if(r.type==='Transfer')where=`<strong>Transfer to ${esc(locName(state,r.dest))}</strong>${r.govId?`<br><span class="muted small">${esc(govName(r.govId))}</span>`:''}`;
+  else where=`<strong>Receive stock</strong>${r.supplier?`<br><span class="muted small">From ${esc(r.supplier)}</span>`:''}`;
+  const items=r.items.length?`<ul class="items">${r.items.map(it=>`<li>${it.qty} × ${esc(nm(state.products,it.productId))} <span class="code">${esc(batchNo(state,it.batchId))}</span>${itemLoc(it)?` <span class="muted">(${esc(T.wh.toLowerCase())} ${esc(locName(state,itemLoc(it)))})</span>`:''}</li>`).join('')}</ul>`:'';
+  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}</div><div style="margin-top:6px">${where}</div>${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
+}
+
+function routeCard(rt,agentView){
+  const s=routeStatus(rt);
+  const stops=rt.taskIds.map((id,i)=>{const t=find(state.tasks,id);if(!t)return '';const r=find(state.requests,t.requestId);if(!r)return '';
+    let actions='';
+    if(agentView&&['Routed','In transit'].includes(t.status)){
+      actions=`<div class="row" style="margin-top:10px">${t.status==='Routed'?`<button class="btn plain sm" data-act="taskStart" data-id="${t.id}">Start</button>`:''}
+        <button class="btn ok sm" data-act="taskDone" data-id="${t.id}">Mark completed</button>
+        <input id="why_${t.id}" placeholder="Reason if failed" style="max-width:220px;padding:4px 8px" aria-label="Reason for failure">
+        <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
+    }
+    return `<div class="stop ${t.status==='Completed'?'is-done':t.status==='Failed'?'is-failed':''}"><span class="stop-n">${i+1}</span><div>${stopBody(t,r)}${actions}</div></div>`}).join('');
+  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
+}
+
+function pgRoutes(u){
+  if(!ui.project)return ph('routes')+needProject();
+  const ags=P(state.agents);
+  const waiting=P(state.tasks).filter(t=>t.status==='Awaiting route');
+  const sel='';
+  const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="muted small">Prepared ${fmtT(r.preparedAt)}</span></label>`}).join('');
+  const rf=ui.routeF||{gov:'',group:''};
+  const grpOf=id=>find(state.routeGroups,id);
+  const routes=P(state.routes).filter(rt=>(!rf.group||rt.groupId===rf.group)&&(!rf.gov||routeGovs(rt).includes(rf.gov))).slice().reverse();
+  const groups=state.routeGroups.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  return ph('routes','Put prepared tasks on a route or trip, then choose the agent and date for the whole route. Filter by route group or governorate; stops follow the order you tick them.')+`
+  ${isAll()?allGate('create a route'):`<div class="panel"><h2>Create route</h2>
+  ${waiting.length?`<form data-form="route" class="stack">
+    <div class="fgrid">
+      <label>Trip number (automatic)<input value="${esc(tripNo(state,ui.project,true))}" readonly aria-readonly="true" class="code" style="background:var(--sunk)"></label>
+      <label>Note<input name="note" placeholder="Optional, e.g. morning run, east side"></label>
+      <label>Route date<input type="date" name="date" required value="${today()}"></label>
+      <label>Agent<select name="agent" data-chg="routeAgent" required>${opts(ags,sel,a=>a.name+(a.vehicle?', '+a.vehicle:''),'Choose agent')}</select></label>
+      <label>Route group<select name="groupId" data-chg="routeGroup"><option value="">No group, any governorate</option>${opts(groups,'')}</select></label>
+      <label>Governorate filter<select name="govFilter" data-chg="routeGov"><option value="">All governorates</option>${govsSorted().filter(g=>waiting.some(t=>(find(state.requests,t.requestId)||{}).govId===g.id)).map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></label>
+    </div>
+    <p id="groupGovs" class="note hide"></p>
+    <fieldset><legend>Tasks waiting for a route</legend><div id="routeTasks" style="margin:-4px -12px">${rows}</div><p id="noTasksForAgent" class="muted small hide" style="padding:8px 0">No tasks match this group and governorate.</p></fieldset>
+    <div><button class="btn" type="submit">Create route</button></div>
+  </form>`:`<p class="muted">No tasks are waiting for a route. Prepared requests appear here once the agent and date are set.</p>`}
+  </div>`}
+  <div class="spread" style="margin-bottom:10px"><h2>Routes${isAll()?' in all projects':' in this project'}</h2>
+    <div class="row">
+      <label style="flex-direction:row;align-items:center;gap:8px">Group<select data-chg="rlist" data-k="group" style="width:auto"><option value="">All groups</option>${groups.map(g=>`<option value="${g.id}" ${rf.group===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>
+      <label style="flex-direction:row;align-items:center;gap:8px">Governorate<select data-chg="rlist" data-k="gov" style="width:auto"><option value="">All governorates</option>${govsSorted().map(g=>`<option value="${g.id}" ${rf.gov===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>
+    </div></div>
+  ${routes.length?routes.map(rt=>routeCard(rt,false)).join(''):`<div class="panel empty">${P(state.routes).length?'No routes match these filters.':'No routes yet.'}</div>`}`;
+}
+
+function pgMyTasks(u){
+  if(!ui.project)return ph('mytasks')+needProject();
+  const ids=myAgentIds(u);
+  if(!ids.length&&u.role!=='admin')return ph('mytasks')+`<div class="panel empty">Your login is not linked to a logistics agent yet. Ask the administrator to link it on Setup data, Logistics agents.</div>`;
+  const agentIds=u.role==='admin'&&!ids.length?P(state.agents).map(a=>a.id):ids;
+  const routes=P(state.routes).filter(r=>agentIds.includes(r.agentId)).sort((a,b)=>(a.date).localeCompare(b.date));
+  const active=routes.filter(r=>routeStatus(r)!=='Done'), done=routes.filter(r=>routeStatus(r)==='Done').reverse().slice(0,5);
+  const waiting=P(state.tasks).filter(t=>agentIds.includes(t.agentId)&&t.status==='Awaiting route');
+  return ph('mytasks','Your routes and stops. Update each stop as you go: completing it posts the stock movement and, for deliveries, the sale.')+
+  (u.role==='admin'&&!ids.length?`<p class="note" style="margin-bottom:14px">You are viewing every agent's routes as administrator.</p>`:'')+
+  (active.length?active.map(r=>routeCard(r,true)).join(''):'<div class="panel empty">No active routes. New routes from your team leader appear here.</div>')+
+  (waiting.length?`<div class="panel"><h2>Assigned, waiting for a route</h2><div class="stack">${waiting.map(t=>{const r=find(state.requests,t.requestId);return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="muted small">${fmtD(t.date)}</span></div>`}).join('')}</div></div>`:'')+
+  (done.length?`<h2 style="margin:18px 0 10px">Recently finished</h2>`+done.map(r=>routeCard(r,false)).join(''):'');
+}
+
+function pgSales(u){
+  if(!ui.project)return ph('sales')+needProject();
+  const S=P(state.sales).slice().reverse();
+  const total=S.reduce((a,x)=>a+x.total,0);
+  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)),fmtD(x.date),custLabel(find(state.customers,x.customerId)),nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}`).join('<br>')),{h:money(x.total)}]);
+  return ph('sales','Each completed delivery is recorded here automatically as a sales entry, under the same reference number as its order.')+`
+  <div class="stats"><div class="stat"><b>${S.length}</b><span>Sales entries</span></div><div class="stat"><b>${money(total)}</b><span>Total value</span></div><div class="stat"><b>${money(S.filter(x=>x.date===today()).reduce((a,x)=>a+x.total,0))}</b><span>Today</span></div></div>
+  ${table([{l:'Sale'},{l:'Reference'},{l:'Date'},{l:'Customer'},{l:'Agent'},{l:'Lines'},{l:'Total',num:1}],rows,'No sales yet. A sale is recorded when an agent completes a delivery.')}`;
+}
+
+function invData(){
+  const f=ui.inv||(ui.inv={product:'',loc:'',type:'',from:'',to:''});
+  const prods=P(state.products).filter(p=>!f.product||p.id===f.product);
+  const pids=isAll()?myProjIds():[ui.project];
+  const allLocs=pids.flatMap(pid=>projLocs(state,pid).map(l=>[l[0],(isAll()?projCode(pid)+' ':'')+(l[2]==='s'?l[1]+' (sales)':l[1]),l[2]==='s'?'Sales team':'Warehouse',pid]));
+  const locs=allLocs.filter(l=>!f.loc||l[0]===f.loc);
+  const mv=P(state.movements).filter(m=>(!f.product||m.productId===f.product)&&(!f.loc||m.from===f.loc||m.to===f.loc)&&(!f.type||m.type===f.type)&&(!f.from||m.at.slice(0,10)>=f.from)&&(!f.to||m.at.slice(0,10)<=f.to)).slice().reverse();
+  return {f,prods,allLocs,locs,mv};
+}
+function pgInventory(u){
+  if(!ui.project)return ph('inventory')+needProject();
+  const {f,prods,allLocs,locs:locsAll,mv}=invData();
+  const rows=[];
+  const locs=isAll()&&!f.product?locsAll:locsAll.filter(l=>!f.product||l[3]===(find(state.products,f.product)||{}).projectId);
+  prods.forEach(p=>{const bs=batchesFor(state,p.id);const totals=locs.map(()=>0);
+    bs.forEach(b=>{const vals=locs.map(l=>qty(state,l[0],p.id,b.id));vals.forEach((v,i)=>totals[i]+=v);const t=vals.reduce((a,c)=>a+c,0);
+      rows.push([H(`<span class="muted">${esc(p.sku)}</span>`),H(`<span class="code">${esc(b.batchNo)}</span>`),fmtD(b.expiry),...vals.map(v=>({h:`<span class="${v<0?'neg':''}">${v}</span>`})),{h:String(t)}])});
+    const row=[H(`<strong>${esc(p.sku)} ${esc(p.name)}</strong>`),H('<span class="muted">All batches</span>'),'',...totals.map(v=>({h:`<strong>${v}</strong>`})),{h:`<strong>${totals.reduce((a,c)=>a+c,0)}</strong>`}];rows.push(row)});
+  const types=[...new Set(P(state.movements).map(m=>m.type))].sort();
+  const shown=mv.slice(0,200);
+  return ph('inventory','Balances update automatically when a task is completed. Every movement carries the order reference.')+`
+  <div class="panel">
+    <div class="fgrid">
+      <label>Product<select data-chg="inv" data-k="product"><option value="">All products</option>${P(state.products).map(p=>`<option value="${p.id}" ${f.product===p.id?'selected':''}>${esc(p.sku)} ${esc(p.name)}</option>`).join('')}</select></label>
+      <label>Location<select data-chg="inv" data-k="loc"><option value="">All locations</option>${allLocs.map(l=>`<option value="${l[0]}" ${f.loc===l[0]?'selected':''}>${esc(l[1])}</option>`).join('')}</select></label>
+      <label>Movement type<select data-chg="inv" data-k="type"><option value="">All types</option>${types.map(t=>`<option ${f.type===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>
+      <label>Movements from<input type="date" data-chg="inv" data-k="from" value="${esc(f.from)}"></label>
+      <label>Movements to<input type="date" data-chg="inv" data-k="to" value="${esc(f.to)}"></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" data-act="exportInv">Export to Excel</button>
+      <button class="btn plain sm" data-act="clearInv">Clear filters</button>
+      <span class="muted small">Exports ${f.product?'the selected product':'all products'}${f.loc?' at the selected location':''}: product details with batches, stock by location, and ${mv.length} movement${mv.length===1?'':'s'}.</span>
+    </div>
+  </div>
+  <h2 style="margin-bottom:10px">Stock on hand</h2>
+  ${table([{l:'Product'},{l:'Batch'},{l:'Expiry'},...locs.map(l=>({l:l[1],num:1})),{l:'Total',num:1}],rows,'No products match.')}
+  <h2 style="margin:22px 0 10px">Stock movements <span class="muted small" style="font-family:var(--body);font-weight:500">${mv.length>shown.length?`showing latest ${shown.length} of ${mv.length}, export for all`:mv.length+' found'}</span></h2>
+  ${table([{l:'Movement'},{l:'Reference'},{l:'When'},{l:'Type'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'From'},{l:'To'},{l:'By'}],shown.map(m=>[H(`<span class="code">${esc(m.id)}</span>`),H(m.ref==='OPENING'?'<span class="muted">Opening</span>':refTag(m.ref)),fmtT(m.at),m.type,nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),locName(state,m.from),locName(state,m.to),m.by]),'No stock movements match these filters.')}`;
+}
+function invWorkbook(){
+  const {f,prods,locs,mv}=invData();
+  const pj=isAll()?{code:'ALL',name:'All my projects'}:(find(state.projects,ui.project)||{});
+  const prodSheet=[['Project','SKU','Product','Unit','Unit price','Batch','Manufactured','Expiry',...locs.map(l=>l[1]),'Total']];
+  const stockSheet=[['Project','SKU','Product','Batch','Expiry','Location','Location type','Quantity']];
+  prods.forEach(p=>batchesFor(state,p.id).forEach(b=>{
+    const vals=locs.map(l=>qty(state,l[0],p.id,b.id));
+    prodSheet.push([projCode(p.projectId),p.sku,p.name,p.unit,Number(p.price)||0,b.batchNo,b.mfg||'',b.expiry||'',...vals,vals.reduce((a,c)=>a+c,0)]);
+    locs.forEach((l,i)=>{if(vals[i])stockSheet.push([projCode(p.projectId),p.sku,p.name,b.batchNo,b.expiry||'',l[1],l[2],vals[i]])});
+  }));
+  const mvSheet=[['Project','Movement','Reference','Date','Time','Type','SKU','Product','Batch','Quantity','From','To','Customer ID','Governorate','By']];
+  mv.forEach(m=>{const p=find(state.products,m.productId)||{};const r=state.requests.find(x=>x.ref===m.ref)||{};const c=find(state.customers,r.customerId)||{};const d=new Date(m.at);
+    mvSheet.push([projCode(m.projectId),m.id,m.ref,m.at.slice(0,10),pad(d.getHours(),2)+':'+pad(d.getMinutes(),2),m.type,p.sku||'',p.name||'',batchNo(state,m.batchId),m.qty,locName(state,m.from),locName(state,m.to),c.code||'',govName(r.govId),m.by])});
+  const info=[['DAF Logistics App, inventory export'],['Project',(pj.code||'')+': '+(pj.name||'')],['Product filter',f.product?(find(state.products,f.product)||{}).name:'All products'],['Location filter',f.loc?locName(state,f.loc):'All locations'],['Movement type',f.type||'All types'],['Movements from',f.from||'Any'],['Movements to',f.to||'Any'],['Exported',fmtT(now())+' by '+cur()]];
+  return {pj,f,sheets:[['Product details',prodSheet],['Stock by location',stockSheet],['Movements',mvSheet],['Export info',info]]};
+}
+
+/* ---------- Stock validation ---------- */
+function scVarCell(v){return {h:`<strong style="color:${v===0?'var(--ok)':v<0?'var(--bad)':'var(--warn)'}">${v>0?'+':''}${v}</strong>`}}
+function scProductState(lines){
+  const tv=lines.reduce((a,l)=>a+l.counted-l.system,0),anyVar=lines.some(l=>l.counted!==l.system);
+  if(!anyVar)return ['Match','ok'];
+  if(tv===0)return ['Total matches, batches differ','warn'];
+  return [tv<0?'Short by '+(-tv):'Over by '+tv,'bad'];
+}
+function pgStockCheck(u){
+  if(!ui.project)return ph('stockcheck')+needProject();
+  const sc=ui.sc||(ui.sc={loc:'',product:'',view:''});
+  const locs=projLocs(state,ui.project);
+  if(sc.view){const c=find(state.counts,sc.view);if(c)return ph('stockcheck','Compare the physical count with the system stock and fix batch mix-ups.')+countDetail(c)}
+  let form='';
+  if(sc.loc){
+    const prods=P(state.products).filter(p=>!sc.product||p.id===sc.product);
+    const rows=prods.map(p=>{const bs=batchesFor(state,p.id);if(!bs.length)return '';const sys=bs.reduce((a,b)=>a+qty(state,sc.loc,p.id,b.id),0);
+      return `<tr class="sc-prod"><td colspan="2"><strong>${esc(p.sku)} ${esc(p.name)}</strong></td><td class="num"><strong>${sys}</strong></td><td class="num"><strong data-ptot="${p.id}">–</strong></td><td class="num" data-pvar="${p.id}">–</td><td data-pstate="${p.id}" class="small muted">Not counted</td></tr>`+
+      bs.map(b=>{const q=qty(state,sc.loc,p.id,b.id);return `<tr><td class="code" style="padding-left:22px">${esc(b.batchNo)}</td><td>${esc(fmtD(b.expiry))}</td><td class="num">${q}</td><td class="num"><input type="number" min="0" step="1" inputmode="numeric" name="c|${p.id}|${b.id}" data-inp="count" data-p="${p.id}" data-sys="${q}" style="width:100px;text-align:right;padding:5px 8px" aria-label="Physical count for ${esc(p.name)} batch ${esc(b.batchNo)}"></td><td class="num" data-bvar="${p.id}|${b.id}">–</td><td></td></tr>`}).join('')}).join('');
+    form=`<form data-form="stockCount" class="stack">
+      <div class="tbl"><table><thead><tr><th>Product / batch</th><th>Expiry</th><th class="num">System</th><th class="num">Physical count</th><th class="num">Variance</th><th>Result</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="empty">No products with batches in this project.</td></tr>'}</tbody></table></div>
+      <p class="muted small">Enter what you counted. Once any batch of a product has a count, its blank batches are treated as 0. Products you leave fully blank are not included.</p>
+      <div class="fgrid"><label>Count date<input type="date" name="date" value="${today()}" required></label><label>Note<input name="note" placeholder="Optional, e.g. monthly count"></label><div><button class="btn" type="submit">Save count and compare</button></div></div>
+    </form>`;
+  }
+  const hist=P(state.counts).slice().reverse();
+  return ph('stockcheck','Enter your physical count for a warehouse or sales team member. The app compares it with the system stock by batch and by product. When a product total matches but its batches differ, you can reallocate between batches and the total stays the same.')+`
+  ${isAll()?allGate('enter a new count'):`<div class="panel"><h2>New count</h2>
+    <div class="fgrid" style="margin:10px 0 14px">
+      <label>Location counted<select data-chg="sc" data-k="loc"><option value="">Choose warehouse or sales team</option>${[['w','Warehouses'],['s','Sales team']].map(([k,l])=>{const L=locs.filter(x=>x[2]===k);return L.length?`<optgroup label="${l}">${L.map(x=>`<option value="${x[0]}" ${sc.loc===x[0]?'selected':''}>${esc(x[1])}</option>`).join('')}</optgroup>`:''}).join('')}</select></label>
+      <label>Product<select data-chg="sc" data-k="product"><option value="">All products</option>${P(state.products).map(p=>`<option value="${p.id}" ${sc.product===p.id?'selected':''}>${esc(p.sku)} ${esc(p.name)}</option>`).join('')}</select></label>
+    </div>
+    ${sc.loc?form:'<p class="muted">Choose the location you counted to start.</p>'}
+  </div>`}
+  <h2 style="margin-bottom:10px">Count history</h2>
+  ${table([{l:'Count'},{l:'Date'},{l:'Location'},{l:'Products',num:1},{l:'Result'},{l:'Status'},{l:'By'},{l:''}],hist.map(c=>{const res=countSummary(c);return [H(`<span class="code">${esc(c.id)}</span>`),fmtD(c.date),locName(state,c.loc),String(res.products),H(res.html),H(st(c.status)),c.by,H(`<button class="btn plain sm" data-act="scView" data-id="${c.id}">Open</button>`)]}),'No counts yet.')}`;
+}
+function countGroups(c){const g={};c.lines.forEach(l=>{(g[l.productId]=g[l.productId]||[]).push(l)});return g}
+function countSummary(c){
+  const g=countGroups(c);let m=0,mix=0,off=0,re=0;
+  Object.values(g).forEach(ls=>{const s=scProductState(ls)[1];if(s==='ok')m++;else if(s==='warn'){if(ls.some(l=>l.reallocated))re++;else mix++}else off++});
+  const parts=[];if(m)parts.push(`<span style="color:var(--ok)">${m} match</span>`);if(re)parts.push(`<span style="color:var(--ok)">${re} reallocated</span>`);if(mix)parts.push(`<span style="color:var(--warn)">${mix} batch mix-up</span>`);if(off)parts.push(`<span class="neg">${off} with total variance</span>`);
+  return {products:Object.keys(g).length,html:parts.join(', ')};
+}
+function countDetail(c){
+  const g=countGroups(c);let body='';
+  Object.entries(g).forEach(([pid,ls])=>{
+    const p=find(state.products,pid)||{};const [label,kind]=scProductState(ls);
+    const sys=ls.reduce((a,l)=>a+l.system,0),cnt=ls.reduce((a,l)=>a+l.counted,0);
+    const done=ls.some(l=>l.reallocated);
+    const btn=kind==='warn'?(done?st('Reallocated'):`<button class="btn sm" data-act="scRealloc" data-id="${c.id}" data-p="${pid}">Reallocate batches</button>`):'';
+    body+=`<tr class="sc-prod"><td colspan="2"><strong>${esc(p.sku||'')} ${esc(p.name||'')}</strong></td><td class="num"><strong>${sys}</strong></td><td class="num"><strong>${cnt}</strong></td><td class="num">${scVarCell(cnt-sys).h}</td><td><span class="small" style="color:var(--${kind==='ok'?'ok':kind==='warn'?'warn':'bad'});font-weight:700">${esc(label)}</span> ${btn}</td></tr>`+
+      ls.map(l=>`<tr><td class="code" style="padding-left:22px">${esc(batchNo(state,l.batchId))}</td><td>${esc(fmtD((find(state.batches,l.batchId)||{}).expiry))}</td><td class="num">${l.system}</td><td class="num">${l.counted}</td><td class="num">${scVarCell(l.counted-l.system).h}</td><td class="small muted">${l.reallocated?'Adjusted to '+l.counted:''}</td></tr>`).join('');
+  });
+  const tv=c.lines.reduce((a,l)=>a+l.counted-l.system,0);
+  const anyMix=Object.entries(g).some(([pid,ls])=>scProductState(ls)[1]==='warn'&&!ls.some(l=>l.reallocated));
+  return `<div class="panel">
+    <div class="spread" style="margin-bottom:12px"><div class="row"><span class="code" style="font-size:18px">${esc(c.id)}</span>${st(c.status)}<span>${esc(locName(state,c.loc))}</span><span class="muted">${fmtD(c.date)}, by ${esc(c.by)}</span></div><button class="btn plain sm" data-act="scView" data-id="">Back to stock validation</button></div>
+    ${c.note?`<p class="muted" style="margin-bottom:10px">${esc(c.note)}</p>`:''}
+    <div class="stats"><div class="stat"><b>${Object.keys(g).length}</b><span>Products counted</span></div><div class="stat"><b>${c.lines.filter(l=>l.counted!==l.system).length}</b><span>Batches with variance</span></div><div class="stat"><b style="color:${tv===0?'var(--ok)':'var(--bad)'}">${tv>0?'+':''}${tv}</b><span>Total variance, units</span></div></div>
+    <div class="tbl"><table><thead><tr><th>Product / batch</th><th>Expiry</th><th class="num">System</th><th class="num">Counted</th><th class="num">Variance</th><th>Result</th></tr></thead><tbody>${body}</tbody></table></div>
+    ${anyMix?`<p class="note" style="margin-top:12px">Reallocating moves units between batches of the same product at ${esc(locName(state,c.loc))} so each batch equals the count. The product total does not change. It is recorded as a Batch reallocation movement under ${esc(c.id)}.</p><div class="row" style="margin-top:10px"><button class="btn" data-act="scRealloc" data-id="${c.id}" data-p="">Reallocate all products whose total matches</button></div>`:''}
+    ${Object.values(g).some(ls=>scProductState(ls)[1]==='bad')?`<p class="muted small" style="margin-top:10px">Products marked Short or Over have a different total from the system, so they cannot be reallocated. Investigate the difference first.</p>`:''}
+  </div>`;
+}
+function scLive(form,pid){
+  const ins=[...form.querySelectorAll(`input[data-p="${pid}"]`)];const any=ins.some(i=>i.value!=='');
+  let tot=0,sys=0,mix=false;
+  ins.forEach(i=>{const sy=Number(i.dataset.sys),v=i.value===''?(any?0:null):Math.max(0,Math.floor(Number(i.value)));sys+=sy;const cell=form.querySelector(`[data-bvar="${pid}|${i.name.split('|')[2]}"]`);
+    if(v===null){cell.innerHTML='–';return}tot+=v;const d=v-sy;if(d)mix=true;cell.innerHTML=scVarCell(d).h});
+  const pt=form.querySelector(`[data-ptot="${pid}"]`),pv=form.querySelector(`[data-pvar="${pid}"]`),ps=form.querySelector(`[data-pstate="${pid}"]`);
+  if(!any){pt.textContent='–';pv.innerHTML='–';ps.className='small muted';ps.textContent='Not counted';return}
+  const d=tot-sys;pt.textContent=tot;pv.innerHTML=scVarCell(d).h;
+  const [lbl,k]=!mix?['Match','ok']:d===0?['Total matches, batches differ','warn']:[d<0?'Short by '+(-d):'Over by '+d,'bad'];
+  ps.className='small';ps.style.fontWeight='700';ps.style.color=`var(--${k==='ok'?'ok':k==='warn'?'warn':'bad'})`;ps.textContent=lbl;
+}
+
+/* Report */
+function reportData(){
+  const f=ui.rf;const q=f.q.trim().toLowerCase();
+  const inRange=d=>{if(!d)return true;const x=d.slice(0,10);return (!f.from||x>=f.from)&&(!f.to||x<=f.to)};
+  const okRef=r=>!q||String(r||'').toLowerCase().includes(q);
+  const reqOf=ref=>state.requests.find(r=>r.ref===ref);
+  const okType=ref=>{if(!f.type)return true;const r=reqOf(ref);return r&&r.type===f.type};
+  const okUser=b=>!f.user||b===f.user;
+  const okSt=s=>!f.status||s===f.status;
+  const okGov=ref=>{if(!f.gov)return true;const r=reqOf(ref);return r&&r.govId===f.gov};
+  const pid=ui.project;const ids=isAll()?myProjIds():[pid];
+  const D={};
+  D.activity={cols:['When','User','Action','Reference','Status','Detail'],rows:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[fmtT(l.at),l.by,l.action,l.ref?H(refTag(l.ref)):'',l.status?H(st(l.status)):'',l.detail]),csv:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[l.at,l.by,l.action,l.ref,l.status,l.detail])};
+  const R=P(state.requests).filter(r=>inRange(r.createdAt)&&okRef(r.ref)&&okGov(r.ref)&&(!f.type||r.type===f.type)&&okUser(r.createdBy)&&okSt(r.status)).slice().reverse();
+  D.requests={cols:['Reference','Type','Governorate','Customer ID','Customer or destination','Products','Status','Created by','Created','Prepared by','Completed'],rows:R.map(r=>[H(refTag(r.ref)),r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),H(st(r.status)),r.createdBy,fmtT(r.createdAt),r.preparedBy||'',fmtT(r.completedAt)]),csv:R.map(r=>[r.ref,r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),r.status,r.createdBy,r.createdAt,r.preparedBy||'',r.completedAt||''])};
+  const T=P(state.tasks).filter(t=>inRange(t.createdAt)&&okRef(t.ref)&&okType(t.ref)&&okGov(t.ref)&&okUser(t.createdBy)&&okSt(t.status)).slice().reverse();
+  D.tasks={cols:['Task','Reference','Agent','Task date','Route','Status','Prepared by','Completed or failed'],rows:T.map(t=>[H(`<span class="code">${esc(t.id)}</span>`),H(refTag(t.ref)),nm(state.agents,t.agentId),fmtD(t.date),(find(state.routes,t.routeId)||{}).name||'',H(st(t.status)),t.createdBy,fmtT(t.completedAt||t.failedAt)]),csv:T.map(t=>[t.id,t.ref,nm(state.agents,t.agentId),t.date,(find(state.routes,t.routeId)||{}).name||'',t.status,t.createdBy,t.completedAt||t.failedAt||''])};
+  const RT=P(state.routes).filter(r=>inRange(r.createdAt)&&(!q||r.taskIds.some(id=>okRef((find(state.tasks,id)||{}).ref))||r.id.toLowerCase().includes(q))&&okUser(r.createdBy)&&okSt(routeStatus(r))&&(!f.gov||routeGovs(r).includes(f.gov))).slice().reverse();
+  const refsOf=r=>r.taskIds.map(id=>(find(state.tasks,id)||{}).ref).filter(Boolean);
+  D.routes={cols:['Trip number','Note','Group','Governorates','Date','Agent','Stops','Status','Created by'],rows:RT.map(r=>[H(`<span class="code">${esc(r.name)}</span>`),r.note||'',nm(state.routeGroups,r.groupId),routeGovs(r).map(govName).join(', '),fmtD(r.date),nm(state.agents,r.agentId),H(refsOf(r).map(x=>refTag(x)).join(' ')),H(st(routeStatus(r))),r.createdBy]),csv:RT.map(r=>[r.name,r.note||'',nm(state.routeGroups,r.groupId),routeGovs(r).map(govName).join(' / '),r.date,nm(state.agents,r.agentId),refsOf(r).join(' '),routeStatus(r),r.createdBy])};
+  const S2=P(state.sales).filter(x=>inRange(x.at)&&okRef(x.ref)&&okType(x.ref)&&okGov(x.ref)&&okUser(x.recordedBy)&&(!f.status||f.status==='Recorded')).slice().reverse();
+  D.sales={cols:['Sale','Reference','Date','Customer','Agent','Recorded by','Status','Total'],rows:S2.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)),fmtD(x.date),custLabel(find(state.customers,x.customerId)),nm(state.agents,x.agentId),x.recordedBy,H(st('Recorded')),{h:money(x.total)}]),csv:S2.map(x=>[x.id,x.ref,x.date,custLabel(find(state.customers,x.customerId)),nm(state.agents,x.agentId),x.recordedBy,'Recorded',x.total])};
+  const M=P(state.movements).filter(m=>inRange(m.at)&&okRef(m.ref)&&okGov(m.ref)&&(!f.type||m.type===f.type)&&okUser(m.by)&&!f.status).slice().reverse();
+  D.movements={cols:['Movement','Reference','When','Type','Product','Batch','Quantity','From','To','By'],rows:M.map(m=>[H(`<span class="code">${esc(m.id)}</span>`),m.ref==='OPENING'?'Opening':H(refTag(m.ref)),fmtT(m.at),m.type,nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),locName(state,m.from),locName(state,m.to),m.by]),csv:M.map(m=>[m.id,m.ref,m.at,m.type,nm(state.products,m.productId),batchNo(state,m.batchId),m.qty,locName(state,m.from),locName(state,m.to),m.by])};
+  const U=state.users.filter(x=>(x.role==='admin'||(x.projects||[]).some(id=>ids.includes(id)))&&okUser(x.username)&&(!f.status||f.status===(x.active?'Active':'Inactive')));
+  const lastSeen=un=>{for(let i=state.log.length-1;i>=0;i--)if(state.log[i].by===un)return state.log[i].at;return ''};
+  D.users={cols:['Username','Name','Role','Projects','Last activity','Status'],rows:U.map(x=>[x.username,x.name,ROLES[x.role],(x.role==='admin'?state.projects:state.projects.filter(p=>(x.projects||[]).includes(p.id))).map(p=>p.code).join(', '),fmtT(lastSeen(x.username)),H(st(x.active?'Active':'Inactive'))]),csv:U.map(x=>[x.username,x.name,ROLES[x.role],(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).join(' '),lastSeen(x.username),x.active?'Active':'Inactive'])};
+  return D;
+}
+
+function traceView(ref){
+  const r=state.requests.find(x=>x.ref===ref);
+  if(!r)return `<div class="panel"><div class="spread"><h2>Trace</h2><button class="btn plain sm" data-act="clearTrace">Close</button></div><p class="err" style="margin-top:8px">No order found with reference ${esc(ref)}. Check the number and try again.</p></div>`;
+  const t=taskOf(state,ref), rt=t&&t.routeId?find(state.routes,t.routeId):null, sale=state.sales.find(x=>x.ref===ref), mv=state.movements.filter(m=>m.ref===ref), lg=state.log.filter(l=>l.ref===ref);
+  return `<div class="panel">
+    <div class="spread" style="margin-bottom:12px"><div class="row">${refTag(ref,true)}<span class="ty">${esc(r.type)}</span>${st(r.status)}</div><button class="btn plain sm" data-act="clearTrace">Close trace</button></div>
+    <div style="margin-bottom:14px">${chain(state,r)}</div>
+    <div class="kv" style="margin-bottom:16px">
+      <div><span>Request</span>${esc(partyText(state,r))}<br><span>${esc(itemsText(state,r)||'No products')}</span></div>
+      <div><span>Task</span>${t?`<span class="code">${esc(t.id)}</span>, ${esc(nm(state.agents,t.agentId))}, ${fmtD(t.date)} ${st(t.status)}`:'Not prepared yet'}</div>
+      <div><span>Route</span>${rt?`<span class="code">${esc(rt.name)}</span>${rt.note?' '+esc(rt.note):''}, ${fmtD(rt.date)}`:'Not routed yet'}</div>
+      <div><span>Sale</span>${sale?`<span class="code">${esc(sale.id)}</span>, ${money(sale.total)}`:(r.type==='Delivery'?'Recorded on completion':'Not a sale')}</div>
+      <div><span>Stock movements</span>${mv.length?mv.map(m=>`${m.qty} × ${esc(nm(state.products,m.productId))} (batch ${esc(batchNo(state,m.batchId))}): ${esc(locName(state,m.from))} to ${esc(locName(state,m.to))}`).join('<br>'):(r.type==='Documentation'?'None, documentation only':'Posted on completion')}</div>
+    </div>
+    <h3 style="margin-bottom:10px">Audit trail</h3>
+    <ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol>
+  </div>`;
+}
+
+function pgReport(u){
+  if(!ui.project)return ph('report')+needProject();
+  const D=reportData();const f=ui.rf;
+  const tabs=[['activity','Activity'],['requests','Requests'],['tasks','Tasks'],['routes','Routes'],['sales','Sales'],['movements','Stock movements'],['users','Users']];
+  const cur=D[ui.reportTab];
+  const statuses=['New','Prepared','Awaiting route','Routed','In transit','Completed','Failed','Returned to stock','Planned','In progress','Done','Recorded','Active','Inactive'];
+  const numCols=['Quantity','Total'];
+  return ph('report','Every request, task, route, sale and stock movement, with users, dates, statuses and reference numbers. Tap a reference to trace it end to end.')+
+  (ui.traceRef?traceView(ui.traceRef):'')+
+  `<div class="panel"><form data-form="traceForm" class="fgrid" style="margin-bottom:14px">
+    <label>Trace a reference<input name="ref" placeholder="e.g. ORD-${new Date().getFullYear()}-0001" value="${esc(ui.traceRef)}"></label>
+    <div><button class="btn" type="submit">Trace order</button></div></form>
+    <div class="fgrid">
+      <label>From<input type="date" data-chg="rf" data-k="from" value="${esc(f.from)}"></label>
+      <label>To<input type="date" data-chg="rf" data-k="to" value="${esc(f.to)}"></label>
+      <label>Type<select data-chg="rf" data-k="type"><option value="">All types</option>${Object.keys(TYPES).map(t=>`<option ${f.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label>Status<select data-chg="rf" data-k="status"><option value="">All statuses</option>${statuses.map(s=>`<option ${f.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label>User<select data-chg="rf" data-k="user"><option value="">All users</option>${state.users.map(x=>`<option value="${esc(x.username)}" ${f.user===x.username?'selected':''}>${esc(x.username)}</option>`).join('')}</select></label>
+      <label>Governorate<select data-chg="rf" data-k="gov"><option value="">All governorates</option>${govsSorted().map(g=>`<option value="${g.id}" ${f.gov===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>
+      <label>Reference contains<input data-chg="rf" data-k="q" value="${esc(f.q)}" placeholder="ORD-"></label>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="btn plain sm" data-act="clearFilters">Clear filters</button><button class="btn ghost sm" data-act="exportCsv">Export this table as CSV</button></div>
+  </div>
+  <div class="tabs" role="tablist">${tabs.map(x=>`<button class="tab ${ui.reportTab===x[0]?'on':''}" role="tab" aria-selected="${ui.reportTab===x[0]}" data-act="reportTab" data-tab="${x[0]}">${x[1]} <span class="muted">${D[x[0]].rows.length}</span></button>`).join('')}</div>
+  ${table(cur.cols.map(c=>({l:c,num:numCols.includes(c)})),cur.rows,'No records match these filters.')}`;
+}
+
+function userFields(x,isNew){
+  const role=x?x.role:'ops';const pages=x?x.pages:ROLE_PAGES[role];const projs=x?x.projects:(isAll()?[]:[ui.project]);
+  return `<div class="fgrid">
+    <label>Full name<input name="name" required value="${esc(x?x.name:'')}"></label>
+    ${isNew?`<label>Username<input name="username" required autocapitalize="none" pattern="[A-Za-z0-9._\-]+" title="Letters, numbers, dot, dash or underscore"></label>`:''}
+    <label>${isNew?'Password':'New password'}<input name="password" type="password" ${isNew?'required minlength="6"':'minlength="6" placeholder="Leave blank to keep"'} autocomplete="new-password"></label>
+    <label>Role<select name="role" data-chg="userRole">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${k===role?'selected':''}>${v}</option>`).join('')}</select></label>
+  </div>
+  <fieldset style="margin-top:12px"><legend>Projects this user can see</legend><div class="checks">${state.projects.map(p=>`<label><input type="checkbox" name="projects" value="${p.id}" ${(projs||[]).includes(p.id)?'checked':''}>${esc(p.code)}: ${esc(p.name)}</label>`).join('')||'<span class="muted small">Create a project first.</span>'}</div></fieldset>
+  <fieldset style="margin-top:10px"><legend>Pages this user can open (set by role, adjust if needed)</legend><div class="checks">${PAGES.map(p=>`<label><input type="checkbox" name="pages" value="${p[0]}" ${(pages||[]).includes(p[0])?'checked':''}>${esc(p[1])}</label>`).join('')}</div></fieldset>`;
+}
+
+function pgUsers(u){
+  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,ROLES[x.role],x.role==='admin'?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
+    if(ui.expand===x.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="userEdit" data-id="${x.id}">${userFields(x,false)}<div class="row" style="margin-top:12px"><button class="btn" type="submit">Save changes</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+    return row});
+  return ph('users','The administrator creates every login and decides which projects and pages each person can see.')+`
+  <div class="panel"><h2>Create user</h2><form data-form="user">${userFields(null,true)}<div style="margin-top:12px"><button class="btn" type="submit">Create user</button></div></form></div>
+  ${table([{l:'Username'},{l:'Name'},{l:'Role'},{l:'Projects'},{l:'Pages',num:1},{l:'Status'},{l:''}],rows)}
+  <div class="panel" style="margin-top:18px"><h2>Backup and restore</h2><p class="muted" style="margin-bottom:10px">Download all app data as one file, or restore a backup. Use this to move your data to another copy of the app, for example the GitHub version. Restoring replaces all current data for every user of this page.</p>
+    <div class="row"><button class="btn" data-act="backupData">Download backup</button><label class="btn plain" style="flex-direction:row;color:var(--ink);font-size:15px;cursor:pointer">Restore from backup<input type="file" accept=".json,application/json" data-chg="restoreData" style="display:none"></label>${LIVE_MODE?'<button class="btn bad" data-act="eraseAll">Erase all data</button>':'<button class="btn bad" data-act="resetDemo">Reset to demo data</button>'}</div>
+    ${!docRef?`<p class="note" style="margin-top:12px">Data is saved in this browser on this device. Download a backup regularly, and before clearing your browser data.</p>`:''}</div>`;
+}
+
+/* ---------- Form handlers ---------- */
+const forms={
+  async login(fd){
+    const un=String(fd.get('username')).trim().toLowerCase();
+    const x=state.users.find(v=>v.username===un);
+    const h=await hashPw(un,String(fd.get('password')));
+    if(!x||x.hash!==h){ui.loginError='Username or password is incorrect.';render();return}
+    if(!x.active){ui.loginError='This account is deactivated. Contact the administrator.';render();return}
+    session={uid:x.id};try{sessionStorage.setItem(SS_KEY,JSON.stringify(session))}catch(e){}
+    ui.loginError='';ui.page=null;ui.project=null;ui.expand=null;ui.traceRef='';
+    render();
+    act(s=>log(s,'Signed in',null,x.name+', '+ROLES[x.role],'',x.username,null));
+  },
+  project(fd){act(s=>{
+    const code=String(fd.get('code')).trim().toUpperCase();
+    if(s.projects.some(p=>p.code===code))throw new Error('Project code '+code+' is already used.');
+    const p={id:rid('prj'),code,name:String(fd.get('name')).trim(),desc:String(fd.get('desc')).trim(),createdAt:now(),createdBy:cur()};
+    s.projects.push(p);ui.project=p.id;log(s,'Project created',null,p.code+': '+p.name,'',null,p.id);
+  },'Project created.')},
+  product(fd){act(s=>{
+    const pid=fd.get('projectId'),sku=String(fd.get('sku')).trim().toUpperCase();
+    if(s.products.some(p=>p.projectId===pid&&p.sku===sku))throw new Error('SKU '+sku+' already exists in this project.');
+    const nos=fd.getAll('pb_no'),mf=fd.getAll('pb_mfg'),ex=fd.getAll('pb_exp');const bl=[];
+    nos.forEach((n,i)=>{const no=String(n).trim().toUpperCase();if(!no){if(mf[i]||ex[i])throw new Error('Enter the batch number on every batch line.');return}
+      if(bl.some(b=>b.batchNo===no))throw new Error('Batch '+no+' is entered twice.');
+      if(mf[i]&&ex[i]&&ex[i]<mf[i])throw new Error('Batch '+no+': expiry must be after the manufacturing date.');
+      bl.push({batchNo:no,mfg:mf[i]||'',expiry:ex[i]||''})});
+    if(!bl.length)throw new Error('Add at least one batch number for the product.');
+    const p={id:rid('prd'),projectId:pid,sku,name:String(fd.get('name')).trim(),unit:String(fd.get('unit')).trim(),price:Number(fd.get('price'))||0};
+    s.products.push(p);if(!isAll())ui.project=pid;
+    bl.forEach(b=>s.batches.push({id:rid('bt'),projectId:pid,productId:p.id,...b,createdAt:now(),createdBy:cur()}));
+    log(s,'Product created',null,p.sku+' '+p.name+', linked to '+nm(s.projects,pid)+', batches '+bl.map(b=>b.batchNo).join(', '),'',null,pid);
+  },'Product and batches created.')},
+  batch(fd){act(s=>{
+    const pid=fd.get('productId'),no=String(fd.get('batchNo')).trim().toUpperCase();
+    if(!pid)throw new Error('Choose the product.');
+    if(s.batches.some(b=>b.productId===pid&&b.batchNo===no))throw new Error('Batch '+no+' already exists for this product.');
+    const mfg=fd.get('mfg')||'',exp=fd.get('expiry')||'';if(mfg&&exp&&exp<mfg)throw new Error('Expiry must be after the manufacturing date.');
+    s.batches.push({id:rid('bt'),projectId:ui.project,productId:pid,batchNo:no,mfg,expiry:exp,createdAt:now(),createdBy:cur()});
+    log(s,'Batch added',null,no+' for '+nm(s.products,pid)+(exp?', expiry '+exp:''));
+  },'Batch added.')},
+  gov(fd){act(s=>{const n=String(fd.get('name')).trim();if(s.govs.some(g=>g.name.toLowerCase()===n.toLowerCase()))throw new Error(n+' is already in the list.');s.govs.push({id:rid('gov'),name:n});log(s,'Governorate added',null,n,'',null,null)},'Governorate added.')},
+  group(fd){act(s=>{const name=String(fd.get('name')).trim(),govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');if(s.routeGroups.some(g=>g.name.toLowerCase()===name.toLowerCase()))throw new Error('A group named '+name+' already exists.');s.routeGroups.push({id:rid('rg'),name,govIds,createdAt:now(),createdBy:cur()});log(s,'Route group created',null,name+': '+govIds.map(id=>nm(s.govs,id)).join(', '),'',null,null)},'Route group created.')},
+  groupEdit(fd,f){act(s=>{const g=find(s.routeGroups,f.dataset.id);const govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');const nn=String(fd.get('name')).trim();if(s.routeGroups.some(x=>x.id!==g.id&&x.name.toLowerCase()===nn.toLowerCase()))throw new Error('A group named '+nn+' already exists.');g.name=nn;g.govIds=govIds;ui.expand=null;log(s,'Route group updated',null,g.name+': '+govIds.map(id=>nm(s.govs,id)).join(', '))},'Route group saved.')},
+  customerEdit(fd,f){act(s=>{const c=find(s.customers,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>x.projectId===c.projectId&&x.id!==c.id&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');Object.assign(c,{code,name:String(fd.get('name')).trim(),govId:fd.get('govId')||'',address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()});ui.expand=null;log(s,'Customer updated',null,code+' '+c.name)},'Customer saved.')},
+  customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>x.projectId===ui.project&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:ui.project,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
+  warehouse(fd){act(s=>{const w={id:rid('wh'),projectId:ui.project,name:String(fd.get('name')).trim(),location:String(fd.get('location')).trim()};s.warehouses.push(w);log(s,'Warehouse added',null,w.name)},'Warehouse added.')},
+  salesperson(fd){act(s=>{const x={id:rid('st'),projectId:ui.project,name:String(fd.get('name')).trim(),role:String(fd.get('role')).trim(),phone:String(fd.get('phone')).trim()};s.salesTeam.push(x);log(s,'Sales agent added',null,x.name)},'Sales agent added.')},
+  agent(fd){act(s=>{const a={id:rid('ag'),projectId:ui.project,name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim(),vehicle:String(fd.get('vehicle')).trim(),userId:fd.get('userId')||''};s.agents.push(a);log(s,'Logistics agent added',null,a.name+(a.userId?', login '+nm(s.users,a.userId):''))},'Agent added.')},
+  opening(fd){act(s=>{
+    const q=Math.floor(Number(fd.get('qty')));if(!(q>0))throw new Error('Enter a quantity above zero.');
+    const bid=fd.get('batch');if(!bid)throw new Error('Choose the batch.');
+    move(s,{ref:'OPENING',type:'Opening stock',projectId:ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:'W:'+fd.get('wh')});
+    log(s,'Opening stock added',null,q+' × '+nm(s.products,fd.get('product'))+', batch '+batchNo(s,bid)+' into '+nm(s.warehouses,fd.get('wh')),'');
+  },'Opening stock added.')},
+  request(fd){act(s=>{
+    const type=fd.get('type'),T=TYPES[type];
+    const ps=fd.getAll('item_product'),qs=fd.getAll('item_qty');const bs=[...document.querySelectorAll('#lines .line')].map(l=>{const pid=l.querySelector('select[name=item_product]').value,txt=l.querySelector('input[name=item_batch]').value;if(!pid||!txt.trim())return '';const b=findBatch(s,pid,txt);if(!b)throw new Error('Batch '+txt.trim()+' was not found for '+nm(s.products,pid)+'. Pick one from the list.');if(!allowedBatches(s,pid,type).some(x=>x.id===b.id))throw new Error('Batch '+b.batchNo+' has no stock available.');return b.id});const items=[];
+    ps.forEach((p,i)=>{const q=Math.floor(Number(qs[i]));if(!p&&!qs[i])return;if(!p)throw new Error('Choose a product on every line with a quantity.');if(!bs[i])throw new Error('Choose a batch for '+nm(s.products,p)+'.');if(!(q>0))throw new Error('Enter a quantity above zero for '+nm(s.products,p)+'.');items.push({productId:p,batchId:bs[i],qty:q,warehouseId:''})});
+    if(['out','move'].includes(T.flow)){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
+    if(!items.length&&type!=='Documentation')throw new Error('Add at least one product and quantity.');
+    const r={projectId:ui.project,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:now(),createdBy:cur()};
+    if(T.customer){r.customerId=fd.get('customerId');const typed=String(fd.get('custCode')||'').trim();if(!r.customerId)throw new Error(typed?'No customer with ID '+typed+' in this project.':'Enter the customer ID or choose the customer.')}
+    r.govId=fd.get('govId');if(!r.govId)throw new Error('Choose the governorate.');
+    if(type==='Transfer'){r.dest=fd.get('dest');if(!r.dest)throw new Error('Choose where the stock is transferred to.')}
+    if(type==='Received')r.supplier=String(fd.get('supplier')||'').trim();
+    r.ref=nextRef(s);r.id=r.ref;
+    s.requests.push(r);
+    log(s,'Request created',r.ref,type+': '+partyText(s,r)+(items.length?', '+itemsText(s,r):''),'New');
+    toastMsg='Request '+r.ref+' created.';
+  },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
+  prepare(fd,f){act(s=>{
+    const r=find(s.requests,f.dataset.id),T=TYPES[r.type];
+    if(!['New','Prepared','Failed'].includes(r.status))throw new Error('This request is already on a route.');
+    if(T.flow!=='none'){
+      r.items.forEach((it,i)=>{const l=fd.get('wh_'+i);if(!l)throw new Error('Choose a warehouse or sales team member for every product.');if(r.type==='Transfer'&&l===r.dest)throw new Error('The source and the transfer destination cannot be the same.');it.loc=l;it.warehouseId=l.startsWith('W:')?l.slice(2):''});
+      if(T.flow==='out'||T.flow==='move')checkStock(s,r);
+    }
+    r.status='Prepared';r.preparedAt=now();r.preparedBy=cur();r.failReason='';
+    let t=taskOf(s,r.ref);
+    if(t){
+      if(t.routeId){const rt=find(s.routes,t.routeId);if(rt)rt.taskIds=rt.taskIds.filter(id=>id!==t.id)}
+      Object.assign(t,{agentId:'',date:'',status:'Awaiting route',routeId:null,failReason:'',failedAt:null,updatedAt:now()});
+    }else{
+      t={id:'TSK-'+pad(++s.seq.task,4),ref:r.ref,requestId:r.id,projectId:r.projectId,agentId:'',date:'',status:'Awaiting route',routeId:null,createdAt:now(),createdBy:cur()};
+      s.tasks.push(t);
+    }
+    const whTxt=T.flow==='none'?'no stock movement':r.items.map(it=>nm(s.products,it.productId)+' batch '+batchNo(s,it.batchId)+' '+T.wh.toLowerCase()+' '+locName(s,itemLoc(it))).join('; ');
+    log(s,'Request prepared',r.ref,whTxt,'Prepared');
+    log(s,'Task created',r.ref,t.id+', waiting for a route','Awaiting route');
+    ui.expand=null;
+  },'Request prepared. Add it to a route to assign the agent and date.')},
+  route(fd){act(s=>{
+    const agentId=fd.get('agent'),date=fd.get('date'),note=String(fd.get('note')||'').trim();
+    const ids=fd.getAll('task');if(!ids.length)throw new Error('Tick at least one task for this route.');
+    const ts=ids.map(id=>find(s.tasks,id));
+    ts.forEach(t=>{if(t.status!=='Awaiting route')throw new Error(t.ref+' is no longer waiting for a route.');});
+    const groupId=fd.get('groupId')||'';const g=groupId?find(s.routeGroups,groupId):null;
+    if(g)ts.forEach(t=>{const r=find(s.requests,t.requestId);if(!g.govIds.includes(r.govId))throw new Error(t.ref+' is in '+(nm(s.govs,r.govId)||'no governorate')+', which is not part of group '+g.name+'.')});
+    const name=tripNo(s,ui.project);const rt={id:'RT-'+pad(++s.seq.route,4),projectId:ui.project,name,note,date,agentId,groupId,taskIds:ids,createdAt:now(),createdBy:cur()};
+    s.routes.push(rt);
+    if(!agentId)throw new Error('Choose the agent for this route.');
+    ts.forEach((t,i)=>{t.status='Routed';t.routeId=rt.id;t.routeDate=date;t.agentId=agentId;t.date=date;const r=find(s.requests,t.requestId);r.status='Routed';log(s,'Route assigned',t.ref,name+(note?' ('+note+')':'')+(g?' (group '+g.name+')':'')+' on '+date+', stop '+(i+1)+' of '+ts.length+', agent '+nm(s.agents,agentId),'Routed')});
+    toastMsg='Trip '+name+' created.';
+  },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
+  user(fd){(async()=>{
+    const un=String(fd.get('username')).trim().toLowerCase();
+    if(state.users.some(x=>x.username===un)){toast('Username '+un+' is already taken.','bad');return}
+    const h=await hashPw(un,String(fd.get('password')));
+    act(s=>{const x={id:rid('u'),username:un,name:String(fd.get('name')).trim(),role:fd.get('role'),projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,hash:h,createdAt:now()};
+      if(!x.pages.length)throw new Error('Give the user at least one page.');
+      s.users.push(x);log(s,'User created',null,x.username+', '+ROLES[x.role],'Active',null,null)},'User created. Share the username and password with them.');
+  })()},
+  userEdit(fd,f){(async()=>{
+    const x0=find(state.users,f.dataset.id);const pw=String(fd.get('password')||'');
+    const h=pw?await hashPw(x0.username,pw):null;
+    act(s=>{const x=find(s.users,f.dataset.id);x.name=String(fd.get('name')).trim();x.role=fd.get('role');x.projects=fd.getAll('projects');x.pages=fd.getAll('pages');if(h)x.hash=h;
+      if(!x.pages.length)throw new Error('Give the user at least one page.');
+      if(x.id===me().id&&!x.pages.includes('users'))throw new Error('Keep the Users and access page on your own account.');
+      log(s,'User updated',null,x.username+(h?', password changed':''),'',null,null);ui.expand=null},'User saved.');
+  })()},
+  backStock(fd,f){act(s=>{
+    const r=find(s.requests,f.dataset.id);if(r.status!=='Failed')throw new Error('Only failed requests can go back to stock.');
+    const t=taskOf(s,r.ref);const moved=[];
+    r.items.forEach((it,i)=>{const src=itemLoc(it),to=fd.get('to_'+i);if(!to)throw new Error('Choose where every product goes back to.');
+      if(to!==src){if(src&&qty(s,src,it.productId,it.batchId)<it.qty)throw new Error(locName(s,src)+' has only '+qty(s,src,it.productId,it.batchId)+' of '+nm(s.products,it.productId)+', batch '+batchNo(s,it.batchId)+'.');
+        move(s,{ref:r.ref,type:'Back to stock',projectId:r.projectId,productId:it.productId,batchId:it.batchId,qty:it.qty,from:src||'X:Failed delivery',to});moved.push(it.qty+' × '+nm(s.products,it.productId)+' batch '+batchNo(s,it.batchId)+' '+locName(s,src)+' to '+locName(s,to))}
+      else moved.push(it.qty+' × '+nm(s.products,it.productId)+' kept at '+locName(s,src));
+      it.returnedTo=to});
+    r.status='Returned to stock';r.closedAt=now();r.closedBy=cur();
+    log(s,'Back to stock',r.ref,'Failed request closed, no sale. '+moved.join('; '),'Returned to stock');
+    ui.expand=null;
+  },'Request closed and stock placed back.')},
+  stockCount(fd,f){act(s=>{
+    const loc=ui.sc.loc;const by={};
+    [...f.querySelectorAll('input[data-inp="count"]')].forEach(i=>{const [,pid,bid]=i.name.split('|');(by[pid]=by[pid]||[]).push({bid,val:i.value})});
+    const lines=[];
+    Object.entries(by).forEach(([pid,arr])=>{if(!arr.some(x=>x.val!==''))return;arr.forEach(x=>{const v=x.val===''?0:Math.floor(Number(x.val));if(!(v>=0))throw new Error('Counts must be zero or more.');lines.push({productId:pid,batchId:x.bid,system:qty(s,loc,pid,x.bid),counted:v})})});
+    if(!lines.length)throw new Error('Enter at least one physical count.');
+    const c={id:'CNT-'+pad(++s.seq.cnt,4),projectId:ui.project,loc,date:fd.get('date')||today(),note:String(fd.get('note')||'').trim(),lines,status:'Counted',at:now(),by:cur()};
+    s.counts=s.counts||[];s.counts.push(c);
+    const tv=lines.reduce((a,l)=>a+l.counted-l.system,0);
+    log(s,'Stock count saved',c.id,locName(s,loc)+', '+new Set(lines.map(l=>l.productId)).size+' product(s), total variance '+(tv>0?'+':'')+tv,'Counted');
+    ui.sc.view=c.id;
+  },'Count saved. Review the variance below.')},
+  changePw(fd,f){(async()=>{
+    const btn=f.querySelector('button[type=submit]');
+    const err=m=>{const e=f.querySelector('.form-err');e.textContent=m;e.classList.remove('hide');btn.disabled=false;btn.textContent='Save and continue'};
+    try{
+      const u=me();if(!u)return;
+      const name=String(fd.get('name')||'').trim(),un=String(fd.get('username')||'').trim().toLowerCase(),pw=String(fd.get('password')||'');
+      if(!name)return err('Enter your full name.');
+      if(!/^[a-z0-9._-]+$/.test(un))return err('The username can only contain letters, numbers, dot, dash or underscore, with no spaces.');
+      if(state.users.some(x=>x.id!==u.id&&x.username===un))return err('That username is already taken.');
+      if(pw.length<8)return err('The password must be at least 8 characters.');
+      if(pw!==String(fd.get('password2')||''))return err('The two passwords do not match.');
+      if(un===FIRST_ADMIN.username&&pw===FIRST_ADMIN.password)return err('Choose a new password, not the temporary one.');
+      btn.disabled=true;btn.textContent='Saving…';
+      const h=await hashPw(un,pw);
+      act(s=>{const x=find(s.users,u.id);x.name=name;x.username=un;x.hash=h;x.mustChange=false;log(s,'Administrator account set up',null,un,'Active',un,null)});
+      ui.page='projects';render();toast('Your account is ready. Start by creating your first project.');
+    }catch(e){err('Could not save: '+(e&&e.message||e))}
+  })()},
+  firstAdmin(fd,f){(async()=>{
+    const btn=f.querySelector('button[type=submit]');
+    const err=m=>{const e=f.querySelector('.form-err');e.textContent=m;e.classList.remove('hide');btn.disabled=false;btn.textContent='Create administrator and sign in'};
+    try{
+    if(state.users.length){ui.loginError='An administrator already exists. Please sign in.';render();return}
+    const name=String(fd.get('name')||'').trim(),un=String(fd.get('username')||'').trim().toLowerCase(),pw=String(fd.get('password')||'');
+    if(!name)return err('Enter your full name.');
+    if(!un)return err('Enter a username.');
+    if(!/^[a-z0-9._-]+$/.test(un))return err('The username can only contain letters, numbers, dot, dash or underscore, with no spaces.');
+    if(pw.length<8)return err('The password must be at least 8 characters.');
+    if(pw!==String(fd.get('password2')||''))return err('The two passwords do not match.');
+    btn.disabled=true;btn.textContent='Creating…';
+    const h=await hashPw(un,pw);const id=rid('u');
+    act(s=>{s.users.push({id,username:un,name,role:'admin',projects:[],pages:[...ROLE_PAGES.admin],active:true,hash:h,createdAt:now()});log(s,'Administrator created',null,un,'Active',un,null)});
+    session={uid:id};try{sessionStorage.setItem(SS_KEY,JSON.stringify(session))}catch(e){}ui.loginError='';ui.page='projects';render();
+    toast('Administrator created. Start by creating your first project.');
+    }catch(e){err('Could not create the administrator: '+(e&&e.message||e))}
+  })()},
+  traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
+};
+let toastMsg='';
+
+/* ---------- Agent task actions ---------- */
+function completeTask(s,t,r){
+  const T=TYPES[r.type];
+  if(T.flow==='out'||T.flow==='move')checkStock(s,r);
+  const mv=[];
+  r.items.forEach(it=>{
+    const W=itemLoc(it);const base={ref:r.ref,type:r.type,projectId:r.projectId,productId:it.productId,batchId:it.batchId,qty:it.qty};
+    if(T.flow==='out')move(s,{...base,from:W,to:'C:'+r.customerId});
+    else if(T.flow==='move')move(s,{...base,from:W,to:r.dest});
+    else if(T.flow==='in')move(s,{...base,from:r.type==='Received'?'X:'+(r.supplier||'Supplier'):'C:'+r.customerId,to:W});
+    else return;
+    const m=s.movements[s.movements.length-1];mv.push(m.qty+' × '+nm(s.products,m.productId)+' batch '+batchNo(s,m.batchId)+' '+locName(s,m.from)+' to '+locName(s,m.to));
+  });
+  t.status='Completed';t.completedAt=now();r.status='Completed';r.completedAt=now();
+  log(s,'Task completed',r.ref,t.id+' by '+nm(s.agents,t.agentId),'Completed',null,r.projectId);
+  if(r.type==='Delivery'){
+    const lines=r.items.map(it=>{const p=find(s.products,it.productId)||{price:0};return {productId:it.productId,batchId:it.batchId,qty:it.qty,price:p.price,amount:it.qty*p.price}});
+    const sale={id:'SAL-'+pad(++s.seq.sale,4),ref:r.ref,projectId:r.projectId,customerId:r.customerId,agentId:t.agentId,date:today(),at:now(),lines,total:lines.reduce((a,l)=>a+l.amount,0),recordedBy:cur()};
+    s.sales.push(sale);
+    log(s,'Sale recorded',r.ref,sale.id+', '+custLabel(find(s.customers,r.customerId))+', total '+money(sale.total),'Recorded',null,r.projectId);
+  }
+  if(mv.length)log(s,'Stock updated',r.ref,mv.join('; '),'Completed',null,r.projectId);
+  else log(s,'No stock movement',r.ref,'Documentation only','Completed',null,r.projectId);
+}
+
+/* ---------- Click handlers ---------- */
+const acts={
+  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.pending=false;render();window.scrollTo(0,0)},
+  logout(){act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
+  fillDemo(el){const f=document.querySelector('form[data-form="login"]');f.elements.username.value=el.dataset.u;f.elements.password.value=el.dataset.p;f.querySelector('button[type=submit]').focus()},
+  refresh(){ui.pending=false;render()},
+  addLine(){const tpl=document.getElementById('lineTpl');document.getElementById('lines').appendChild(tpl.content.cloneNode(true))},
+  addPbLine(){document.getElementById('pbLines').appendChild(document.getElementById('pbTpl').content.cloneNode(true))},
+  rmRow(el){const box=document.getElementById(el.dataset.box);const rows=box.children;if(rows.length>1)el.parentElement.remove();else el.parentElement.querySelectorAll('input').forEach(i=>i.value='')},
+  rmLine(el){const lines=document.querySelectorAll('#lines .line');if(lines.length>1)el.closest('.line').remove();else{const l=el.closest('.line');l.querySelectorAll('select,input').forEach(i=>i.value='');setupBatchField(l,l.closest('form').elements.type.value)}},
+  failMode(el){ui.failMode=el.dataset.k;render()},
+  expand(el){const id=el.dataset.id;ui.failMode='reassign';ui.expand=(!id||ui.expand===id)?null:id;render()},
+  agentPeriod(el){ui.agentPeriod=el.dataset.k;render()},
+  setupTab(el){ui.setupTab=el.dataset.tab;render()},
+  reportTab(el){ui.reportTab=el.dataset.tab;render()},
+  trace(el){if(!allowedPages(me()).includes('report'))return;ui.page='report';ui.traceRef=el.dataset.ref;render();window.scrollTo(0,0)},
+  clearTrace(){ui.traceRef='';render()},
+  clearFilters(){ui.rf={from:'',to:'',type:'',status:'',user:'',q:'',gov:''};render()},
+  taskStart(el){act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(t.status!=='Routed')throw new Error('This stop has already been started.');t.status='In transit';t.startedAt=now();r.status='In transit';log(s,'Task started',r.ref,t.id+', on the way','In transit',null,r.projectId)},'Stop started.')},
+  taskDone(el){act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(!['Routed','In transit'].includes(t.status))throw new Error('This stop is already closed.');completeTask(s,t,r)},'Stop completed. Stock updated'+'.')},
+  taskFail(el){const why=(document.getElementById('why_'+el.dataset.id)||{}).value||'';if(!why.trim()){toast('Write the reason the stop failed, then mark it failed.','bad');document.getElementById('why_'+el.dataset.id).focus();return}
+    act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);t.status='Failed';t.failedAt=now();t.failReason=why.trim();r.status='Failed';r.failReason=why.trim();log(s,'Task failed',r.ref,t.id+': '+why.trim(),'Failed',null,r.projectId)},'Stop marked failed. The team leader can reassign it.')},
+  delGroup(el){const g=find(state.routeGroups,el.dataset.id);if(!g||!confirm('Delete route group '+g.name+' from all projects? Existing routes keep their stops.'))return;act(s=>{s.routeGroups=s.routeGroups.filter(x=>x.id!==g.id);log(s,'Route group deleted',null,g.name)},'Route group deleted.')},
+  toggleUser(el){act(s=>{const x=find(s.users,el.dataset.id);x.active=!x.active;log(s,x.active?'User activated':'User deactivated',null,x.username,x.active?'Active':'Inactive',null,null)})},
+  async eraseAll(){const t=prompt('This deletes ALL data: projects, products, stock, orders and users. Type ERASE to confirm.');if(t!=='ERASE'){if(t!==null)toast('Nothing was erased.');return}
+    state=await liveStart();state.rev=Date.now();session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}ui.page=null;ui.project=null;persist();render();toast('All data erased.')},
+  async resetDemo(){if(!confirm('Replace all data with the demo data for every user?'))return;const s=await seedState();s.rev=(state.rev||0)+1;state=s;ui.expand=null;ui.traceRef='';persist();render();toast('Demo data restored.')},
+  scView(el){ui.sc=ui.sc||{};ui.sc.view=el.dataset.id;render();window.scrollTo(0,0)},
+  scRealloc(el){act(s=>{
+    const c=find(s.counts,el.dataset.id);const g={};c.lines.forEach(l=>{(g[l.productId]=g[l.productId]||[]).push(l)});
+    const pids=el.dataset.p?[el.dataset.p]:Object.keys(g).filter(pid=>scProductState(g[pid])[1]==='warn'&&!g[pid].some(l=>l.reallocated));
+    if(!pids.length)throw new Error('No products to reallocate.');
+    pids.forEach(pid=>{const ls=g[pid];
+      if(scProductState(ls)[1]!=='warn')throw new Error(nm(s.products,pid)+': the total does not match, so it cannot be reallocated.');
+      ls.forEach(l=>{const cur=qty(s,c.loc,pid,l.batchId);if(cur!==l.system)throw new Error(nm(s.products,pid)+' batch '+batchNo(s,l.batchId)+' changed since the count (now '+cur+', counted against '+l.system+'). Make a new count.')});
+      const det=[];
+      ls.forEach(l=>{const d=l.counted-l.system;if(!d)return;
+        move(s,{ref:c.id,type:'Batch reallocation',projectId:c.projectId,productId:pid,batchId:l.batchId,qty:Math.abs(d),from:d<0?c.loc:'X:Batch reallocation',to:d<0?'X:Batch reallocation':c.loc});
+        det.push(batchNo(s,l.batchId)+' '+(d>0?'+':'')+d);l.reallocated=true});
+      log(s,'Batch reallocation',c.id,nm(s.products,pid)+' at '+locName(s,c.loc)+': '+det.join(', ')+'. Total unchanged.','Reallocated');
+    });
+    const all=Object.values(g).every(ls=>scProductState(ls)[1]!=='warn'||ls.some(l=>l.reallocated));
+    c.status=all?'Reallocated':'Partly reallocated';
+  },'Batches reallocated. Product totals unchanged.')},
+  pickProject(el){ui.project=el.dataset.id;ui.expand=null;ui.inv=null;ui.sc=null;render();window.scrollTo(0,0)},
+  async backupData(){await saveFile('daf-logistics-backup-'+today()+'.json',JSON.stringify(state,null,1));act(s=>log(s,'Backup downloaded',null,'','',undefined,null))},
+  clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
+  async exportInv(){
+    const {pj,f,sheets}=invWorkbook();
+    const prodPart=f.product?((find(state.products,f.product)||{}).sku||'product'):'all';
+    const base='daf-inventory-'+String(pj.code||'project').replace(/[^A-Za-z0-9-]+/g,'')+'-'+String(prodPart).replace(/[^A-Za-z0-9-]+/g,'')+'-'+today();
+    let data,filename;
+    if(window.XLSX){
+      const wb=XLSX.utils.book_new();
+      sheets.forEach(([name,rows])=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=rows[0].map((_,i)=>({wch:Math.min(40,Math.max(10,...rows.map(r=>String(r[i]??'').length+2)))}));XLSX.utils.book_append_sheet(wb,ws,name)});
+      data=XLSX.write(wb,{bookType:'xlsx',type:'array'});filename=base+'.xlsx';
+    }else{
+      const q=v=>{const t=String(v??'');return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t};
+      data=sheets.map(([n,rows])=>n+'\n'+rows.map(r=>r.map(q).join(',')).join('\n')).join('\n\n');filename=base+'.csv';
+    }
+    await saveFile(filename,data);
+  },
+  async exportCsv(){
+    const D=reportData()[ui.reportTab];
+    const q=v=>{const t=String(v??'');return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t};
+    const csv=[D.cols,...D.csv].map(r=>r.map(q).join(',')).join('\n');
+    await saveFile('daf-logistics-'+ui.reportTab+'-'+today()+'.csv',csv);
+  }
+};
+const changes={
+  project(el){ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
+  reqType(el){
+    const f=el.form,T=TYPES[el.value];
+    f.querySelectorAll('.w-customer').forEach(x=>x.classList.toggle('hide',!T.customer));
+    f.querySelector('.w-transfer').classList.toggle('hide',el.value!=='Transfer');
+    f.querySelector('.w-received').classList.toggle('hide',el.value!=='Received');
+    f.querySelector('.w-doc').classList.toggle('hide',el.value!=='Documentation');
+    document.getElementById('typeHelp').textContent=T.help;
+    f.querySelectorAll('#lines .line').forEach(l=>setupBatchField(l,el.value));
+  },
+  reqFilter(el){ui.reqFilter=el.value;render()},
+  lineProduct(el){const line=el.closest('.line');if(line){const inp=line.querySelector('input[name=item_batch]');inp.value='';setupBatchField(line,el.form.elements.type.value);if(!inp.disabled)inp.focus();return}const b=el.form.querySelector('select[name=batch]');if(b)b.innerHTML=batchOptions(state,el.value,'Received')},
+  routeAgent(el){filterRouteTasks()},
+  routeGroup(el){filterRouteTasks()},
+  routeGov(el){filterRouteTasks()},
+  sc(el){ui.sc=ui.sc||{};ui.sc[el.dataset.k]=el.value;ui.sc.view='';render()},
+  inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
+  restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
+    rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
+      if(!obj||!(obj.v===1||obj.v===2)||!Array.isArray(obj.users)||!Array.isArray(obj.projects)){toast('This file is not a DAF Logistics backup.','bad');return}
+      if(!confirm('Replace ALL current data with this backup ('+obj.projects.length+' projects, '+(obj.requests||[]).length+' requests, '+obj.users.length+' users)? This affects every user.'))return;
+      const keepRev=state.rev||0;state=migrate(obj);state.rev=Math.max(state.rev||0,keepRev)+1;ui.expand=null;ui.traceRef='';ui.project=null;
+      if(!me()){session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}}
+      persist();render();toast('Backup restored.')};
+    rd.readAsText(file)},
+  rlist(el){ui.routeF=ui.routeF||{gov:'',group:''};ui.routeF[el.dataset.k]=el.value;render()},
+  reqCustomer(el){const c=find(state.customers,el.value);el.form.elements.custCode.value=c?(c.code||''):'';applyCustomer(el.form,c,'')},
+  userRole(el){const f=el.form;const set=ROLE_PAGES[el.value]||[];f.querySelectorAll('input[name=pages]').forEach(c=>c.checked=set.includes(c.value))},
+  rf(el){ui.rf[el.dataset.k]=el.value;render()}
+};
+function filterRouteTasks(){
+  const f=document.querySelector('form[data-form="route"]');if(!f)return;
+  const agentId=f.elements.agent.value,gid=f.elements.groupId.value,gov=f.elements.govFilter.value;
+  const g=gid?find(state.routeGroups,gid):null;
+  const gn=document.getElementById('groupGovs');if(gn){gn.classList.toggle('hide',!g);if(g)gn.textContent='This group covers: '+g.govIds.map(govName).join(', ')+'.'}
+  [...f.elements.govFilter.options].forEach(o=>{if(o.value)o.hidden=!!g&&!g.govIds.includes(o.value)});
+  if(g&&gov&&!g.govIds.includes(gov))f.elements.govFilter.value='';
+  const gv=f.elements.govFilter.value;
+  let n=0;document.querySelectorAll('.route-task').forEach(l=>{const on=(!g||g.govIds.includes(l.dataset.gov))&&(!gv||l.dataset.gov===gv);l.classList.toggle('hide',!on);if(!on)l.querySelector('input').checked=false;else n++});
+  const e=document.getElementById('noTasksForAgent');if(e)e.classList.toggle('hide',n>0);
+}
+
+document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;const f=acts[el.dataset.act];if(f){e.preventDefault();f(el)}});
+document.addEventListener('submit',e=>{const f=e.target.closest('form[data-form]');if(!f)return;e.preventDefault();const h=forms[f.dataset.form];if(h)h(new FormData(f),f)});
+function applyCustomer(f,c,typed){
+  const card=document.getElementById('custCard');
+  if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;card.innerHTML=custCard(c)}
+  else{f.elements.customerId.value='';card.innerHTML=typed?`<p class="err">No customer with ID ${esc(typed)} in this project.</p>`:''}
+}
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
+document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(!el)return;const h=changes[el.dataset.chg];if(h)h(el)});
+document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
+new MutationObserver(()=>{const s=document.querySelector('select[data-chg="routeAgent"]');if(s&&!s.dataset.init){s.dataset.init='1';filterRouteTasks()}}).observe(document.getElementById('app'),{childList:true,subtree:true});
+
+window.addEventListener('error',e=>{try{toast('Unexpected error: '+(e.message||'unknown'),'bad')}catch(x){}});
+window.addEventListener('unhandledrejection',e=>{try{toast('Unexpected error: '+((e.reason&&e.reason.message)||e.reason||'unknown'),'bad')}catch(x){}});
+/* ---------- Boot ---------- */
+async function boot(){
+  render();
+  let loaded=null;try{loaded=JSON.parse(localStorage.getItem(LS_KEY)||'null')}catch(e){}
+  state=(loaded&&(loaded.v===1||loaded.v===2)&&loaded.users&&(loaded.users.length||!LIVE_MODE))?migrate(loaded):(LIVE_MODE?await liveStart():await seedState());
+  lastJson=JSON.stringify(state);
+  try{session=JSON.parse(sessionStorage.getItem(SS_KEY)||'null')}catch(e){session=null}
+  render();
+  try{
+    if(window.claude&&typeof window.claude.use==='function'){
+      const db=await window.claude.use('db');
+      if(db){
+        docRef=db.doc('app/state');
+        docRef.onSnapshot(snap=>{
+          if(!snap.exists){persist();return}
+          const d=snap.data();if(!d||typeof d.json!=='string'||d.json===lastJson)return;
+          try{const r=JSON.parse(d.json);if(!r||(r.v!==1&&r.v!==2))return;const was=r.v,hadG=!!r.govs;state=migrate(r);lastJson=d.json;if(was===1||!hadG){persist()}try{localStorage.setItem(LS_KEY,d.json)}catch(e){}softRender()}catch(e){}
+        },err=>{toast('Shared storage is unavailable. Changes are saved in this browser only.','bad')});
+      }
+    }
+  }catch(e){}
+}
+boot();
+</script>
+</body>
+</html>
