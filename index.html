@@ -170,6 +170,10 @@ button.ref:hover{filter:brightness(.95)}
 @media (prefers-reduced-motion:no-preference){.mnode.s-in-transit .mdot{animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 8px transparent}}}
 .sc-prod td{background:var(--sunk)}
 .ptag{display:inline-block;font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--route);background:var(--route-soft);border-radius:4px;padding:0 6px;margin-left:6px;vertical-align:1px}
+.modal-bg{position:fixed;inset:0;background:rgba(15,20,40,.55);display:grid;place-items:center;z-index:30;padding:20px}
+.modal{background:var(--surface);color:var(--ink);border-radius:12px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:4px solid var(--bad)}
+.modal h2{margin-bottom:8px}
+.modal ul{margin:8px 0 12px 18px;padding:0;font-size:14px}
 .abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
 .abar i{display:block;height:100%}
 .b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
@@ -247,6 +251,7 @@ button.ref:hover{filter:brightness(.95)}
 <body>
 <div id="app"></div>
 <div id="toast"></div>
+<div id="modal"></div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -255,6 +260,8 @@ button.ref:hover{filter:brightness(.95)}
 /* ---------- Constants ---------- */
 /* LIVE_MODE true = starts empty, first visitor creates the administrator; no demo data or demo logins */
 const LIVE_MODE=true;
+/* TEST_BUILD shows a TEST badge so a test copy is never confused with the real app */
+const TEST_BUILD=false;
 /* Firebase online database. Paste your Firebase web app config here to make all users share one live database. */
 const FIREBASE_CONFIG={
   apiKey:"AIzaSyB4emA4yH3UrBDgQE7lj_EWG27lHIebFSU",
@@ -468,8 +475,8 @@ function migrate(s){
 const isLoc=l=>/^[WS]:/.test(l||'');
 function locName(s,l){
   if(!l)return '';const [k,id]=[l.slice(0,1),l.slice(2)];
-  if(k==='W')return nm(s.warehouses,id,'Warehouse');
-  if(k==='S')return nm(s.salesTeam,id,'Sales agent')+' (sales agent)';
+  if(k==='W')return nm(s.warehouses,id,'')||((s.archive||{})[l]?s.archive[l]+' (deleted)':'Warehouse');
+  if(k==='S')return (nm(s.salesTeam,id,'')||((s.archive||{})[l]?s.archive[l]+' (deleted)':'Sales agent'))+' (sales agent)';
   if(k==='C')return (custLabel(find(s.customers,id))||'Customer')+' (customer)';
   if(k==='X')return id;
   return l;
@@ -566,7 +573,7 @@ async function fbCreateLogin(username,password){
   const a2=FB.secondary.auth();const cred=await a2.createUserWithEmailAndPassword(fbEmail(username),password);const uid=cred.user.uid;await a2.signOut();return uid;
 }
 function noAccessView(){
-  return `<div class="login"><div class="login-card"><div class="app-name"><b>DAF</b> Logistics App</div>
+  return `<div class="login"><div class="login-card"><div class="app-name"><b>DAF</b> Logistics App${TEST_BUILD?' <span style="background:#F2B632;color:#2B1F00;font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;vertical-align:4px">TEST</span>':''}</div>
     <h2 style="margin:10px 0 8px">${FB&&FB.loaded?'No access':'Connecting…'}</h2>
     <p class="muted" style="margin-bottom:16px">${FB&&FB.denied?'Your account is not active in the database, or the database rules block access. Ask the administrator.':FB&&FB.loaded?'Your login is not linked to an active user in this app. Ask the administrator.':'Loading the shared data.'}</p>
     <button class="btn plain" data-act="logout">Sign out</button></div></div>`;
@@ -628,6 +635,8 @@ function allowedPages(u){return PAGES.map(p=>p[0]).filter(p=>(u.pages||[]).inclu
 function myProjects(u){return u.role==='admin'?state.projects:state.projects.filter(p=>(u.projects||[]).includes(p.id))}
 const ALL='__all';
 const isAll=()=>ui.project===ALL;
+const isAdmin=()=>{const u=me();return !!u&&u.role==='admin'};
+function delBtn(kind,id){return isAdmin()?`<button class="btn bad sm" data-act="askDelete" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`:''}
 function myProjIds(){const u=me();return u?myProjects(u).map(p=>p.id):[]}
 const P=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project)};
 function projCode(pid){return (find(state.projects,pid)||{}).code||''}
@@ -654,7 +663,7 @@ function render(){
 function loginView(){
   return `<div class="login"><div class="login-card">
     <div class="lockup"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><div class="words"><div><b>F</b>or</div><div><b>D</b>igital</div><div><b>S</b>olutions</div></div></div>
-    <div class="app-name"><b>DAF</b> Logistics App</div>
+    <div class="app-name"><b>DAF</b> Logistics App${TEST_BUILD?' <span style="background:#F2B632;color:#2B1F00;font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;vertical-align:4px">TEST</span>':''}</div>
     <p class="muted" style="margin-bottom:18px">Sign in with the username and password your administrator created for you.</p>
     <form data-form="login" class="stack">
       <label>Username<input name="username" autocomplete="username" required autocapitalize="none"></label>
@@ -662,6 +671,7 @@ function loginView(){
       ${ui.loginError?`<p class="err">${esc(ui.loginError)}</p>`:''}
       <button class="btn" type="submit">Sign in</button>
     </form>
+    <p class="small" style="margin-top:12px;color:${FB?'var(--ok)':'var(--muted)'};font-weight:600">${FB?'● Connected to the online database':docRef?'':'● Offline copy: data is saved in this browser only'}</p>
     ${LIVE_MODE?'':`<div class="demo"><p class="muted small">Demo accounts for this prototype. Tap one to fill the form.</p>
       ${DEMO.map(d=>`<button type="button" class="demo-row" data-act="fillDemo" data-u="${d[0]}" data-p="${d[1]}"><strong>${d[0]}</strong><span>${d[2]}</span></button>`).join('')}
     </div>`}</div></div>`;
@@ -669,7 +679,7 @@ function loginView(){
 function changePwView(u){
   return `<div class="login"><div class="login-card">
     <div class="lockup"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><div class="words"><div><b>F</b>or</div><div><b>D</b>igital</div><div><b>S</b>olutions</div></div></div>
-    <div class="app-name"><b>DAF</b> Logistics App</div>
+    <div class="app-name"><b>DAF</b> Logistics App${TEST_BUILD?' <span style="background:#F2B632;color:#2B1F00;font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;vertical-align:4px">TEST</span>':''}</div>
     <p style="margin:6px 0 4px"><strong>Set up your administrator account</strong></p>
     <p class="muted small" style="margin-bottom:16px">You signed in with the temporary password. Choose your own name, username and password to continue. The temporary password stops working after this.</p>
     <form data-form="changePw" class="stack" novalidate>
@@ -685,7 +695,7 @@ function changePwView(u){
 function setupView(){
   return `<div class="login"><div class="login-card">
     <div class="lockup"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><div class="words"><div><b>F</b>or</div><div><b>D</b>igital</div><div><b>S</b>olutions</div></div></div>
-    <div class="app-name"><b>DAF</b> Logistics App</div>
+    <div class="app-name"><b>DAF</b> Logistics App${TEST_BUILD?' <span style="background:#F2B632;color:#2B1F00;font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;vertical-align:4px">TEST</span>':''}</div>
     <p style="margin:6px 0 4px"><strong>Welcome. Let's set up the administrator.</strong></p>
     <p class="muted small" style="margin-bottom:16px">This app has no data yet. Create the first administrator account. You will use it to create projects, products and the other users.</p>
     <form data-form="firstAdmin" class="stack" novalidate>
@@ -712,9 +722,9 @@ function shell(u,pages,projs){
   const nav=PAGES.filter(p=>pages.includes(p[0])).map(p=>{const c=navCount(p[0],u);return `<button class="nav-i ${ui.page===p[0]?'on':''}" data-act="nav" data-page="${p[0]}" ${ui.page===p[0]?'aria-current="page"':''}>${esc(p[1])}${c?`<span class="nav-c">${c}</span>`:''}</button>`}).join('');
   const projSel=projs.length?`<select data-chg="project" aria-label="Current project">${projs.length>1?`<option value="${ALL}" ${isAll()?'selected':''}>All my projects (${projs.length})</option>`:''}${projs.map(p=>`<option value="${p.id}" ${p.id===ui.project?'selected':''}>${esc(p.code)}: ${esc(p.name)}</option>`).join('')}</select>`:`<span class="muted small">No projects assigned</span>`;
   return `<div class="top">
-      <div class="brand"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><span><b>DAF</b> Logistics App</span></div>
+      <div class="brand"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><span><b>DAF</b> Logistics App</span>${TEST_BUILD?'<span style="background:#F2B632;color:#2B1F00;font-weight:700;font-size:12px;letter-spacing:.06em;padding:2px 8px;border-radius:4px">TEST</span>':''}</div>
       ${projSel}
-      <div class="who"><div><strong>${esc(u.name)}</strong><span class="muted small">${esc(ROLES[u.role])}</span></div>${FB?'<button class="btn plain sm" data-act="myPwOpen">Change password</button>':''}<button class="btn plain sm" data-act="logout">Sign out</button></div>
+      <div class="who"><div><strong>${esc(u.name)}</strong><span class="muted small">${esc(ROLES[u.role])}</span></div>${FB?'<span class="small" style="color:#9FE3BD;font-weight:700;white-space:nowrap" title="All users share this data live">● Online database</span>':docRef?'':'<span class="small" style="color:#FFD27A;font-weight:700;white-space:nowrap" title="Other devices do not see this data">● This browser only</span>'}${FB?'<button class="btn plain sm" data-act="myPwOpen">Change password</button>':''}<button class="btn plain sm" data-act="logout">Sign out</button></div>
     </div>
     <div class="layout"><nav class="nav" aria-label="Pages">${nav}</nav>
     <main class="main">
@@ -918,12 +928,12 @@ function pgSetup(u){
     body=`<div class="panel"><form data-form="warehouse" class="fgrid">
       <label>Warehouse name<input name="name" required></label><label>Location<input name="location"></label>
       <button class="btn" type="submit">Add warehouse</button></form></div>`+
-      table([{l:'Warehouse'},{l:'Location'},{l:'Units in stock',num:1}],P(state.warehouses).map(w=>[w.name,w.location||'',String(locTotal(state,'W:'+w.id))]),'No warehouses yet.');
+      table([{l:'Warehouse'},{l:'Location'},{l:'Units in stock',num:1},...(isAdmin()?[{l:''}]:[])],P(state.warehouses).map(w=>[w.name+(isAll()?' ('+projCode(w.projectId)+')':''),w.location||'',String(locTotal(state,'W:'+w.id)),...(isAdmin()?[H(delBtn('warehouse',w.id))]:[])]),'No warehouses yet.');
   }else if(t==='sales'){
     body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Sales agents can receive stock through Transfer requests.</p><form data-form="salesperson" class="fgrid">
       <label>Name<input name="name" required></label><label>Role<input name="role" placeholder="e.g. Van sales"></label><label>Phone<input name="phone"></label>
       <button class="btn" type="submit">Add sales agent</button></form></div>`+
-      table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1}],P(state.salesTeam).map(x=>[x.name,x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id))]),'No sales team yet.');
+      table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1},...(isAdmin()?[{l:''}]:[])],P(state.salesTeam).map(x=>[x.name+(isAll()?' ('+projCode(x.projectId)+')':''),x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id)),...(isAdmin()?[H(delBtn('sales',x.id))]:[])]),'No sales team yet.');
   }else if(t==='agents'){
     const agentUsers=state.users.filter(x=>x.role==='agent'&&x.active);
     body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so they can see their routes on the My tasks page.</p><form data-form="agent" class="fgrid">
@@ -968,7 +978,7 @@ function pgRequests(u){
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`)]});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),...(isAdmin()?[H(delBtn('order',r.id))]:[])]});
   return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
   ${isAll()?allGate('create a request'):`<div class="panel"><h2>New request</h2>
   <form data-form="request" class="stack" id="reqForm">
@@ -991,7 +1001,7 @@ function pgRequests(u){
   </div>`}
   <div class="spread" style="margin-bottom:10px"><h2>Requests${isAll()?' in all projects':' in this project'}</h2>
     <label style="flex-direction:row;align-items:center;gap:8px">Status<select data-chg="reqFilter" style="width:auto"><option value="">All</option>${['New','Prepared','Routed','In transit','Completed','Failed'].map(s=>`<option ${s===f?'selected':''}>${s}</option>`).join('')}</select></label></div>
-  ${table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent'},{l:'Task date'},{l:'Created'}],rows,'No requests yet. Create the first one above.')}`;
+  ${table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent'},{l:'Task date'},{l:'Created'},...(isAdmin()?[{l:''}]:[])],rows,'No requests yet. Create the first one above.')}`;
 }
 
 function preparePanel(r){
@@ -1178,6 +1188,65 @@ function invWorkbook(){
   const info=[['DAF Logistics App, inventory export'],['Project',(pj.code||'')+': '+(pj.name||'')],['Product filter',f.product?(find(state.products,f.product)||{}).name:'All products'],['Location filter',f.loc?locName(state,f.loc):'All locations'],['Movement type',f.type||'All types'],['Movements from',f.from||'Any'],['Movements to',f.to||'Any'],['Exported',fmtT(now())+' by '+cur()]];
   return {pj,f,sheets:[['Product details',prodSheet],['Stock by location',stockSheet],['Movements',mvSheet],['Export info',info]]};
 }
+
+/* ---------- Delete (administrator only, password confirmed) ---------- */
+function deletePlan(s,kind,id){
+  if(kind==='warehouse'||kind==='sales'){
+    const list=kind==='warehouse'?s.warehouses:s.salesTeam;const x=find(list,id);if(!x)return {blocked:'This record no longer exists.'};
+    const loc=(kind==='warehouse'?'W:':'S:')+id;const units=locTotal(s,loc);
+    const open=s.requests.filter(r=>!['Completed','Returned to stock'].includes(r.status)&&(r.dest===loc||r.items.some(it=>itemLoc(it)===loc)));
+    const label=kind==='warehouse'?'warehouse':'sales team member';
+    if(units)return {title:'Delete '+x.name+'?',blocked:`${x.name} still holds ${units} unit${units===1?'':'s'}. Move the stock to another location first (Transfer request), then delete.`};
+    if(open.length)return {title:'Delete '+x.name+'?',blocked:`${x.name} is used by ${open.length} open order${open.length===1?'':'s'}: ${open.slice(0,5).map(r=>r.ref).join(', ')}${open.length>5?'…':''}. Finish or delete those orders first.`};
+    return {title:'Delete '+x.name+'?',name:x.name,points:[`The ${label} is removed from all lists.`,'Its past stock movements stay in the history, marked "(deleted)".','This cannot be undone.']};
+  }
+  if(kind==='order'){
+    const r=find(s.requests,id);if(!r)return {blocked:'This order no longer exists.'};
+    const mv=s.movements.filter(m=>m.ref===r.ref).length,sale=s.sales.some(x=>x.ref===r.ref);
+    if(r.status==='Completed'||mv||sale)return {title:'Delete order '+r.ref+'?',blocked:`${r.ref} has already ${sale?'recorded a sale and ':''}moved stock. Deleting it would break the stock and sales records. Create a Return or Cancelled request instead.`};
+    const t=taskOf(s,r.ref);const rt=t&&t.routeId?find(s.routes,t.routeId):null;
+    return {title:'Delete order '+r.ref+'?',name:r.ref,points:[`${r.type} for ${partyText(s,r)}${r.items.length?', '+itemsText(s,r):''}.`,t?'Its task is deleted'+(rt?' and removed from trip '+rt.name:'')+'.':'It has no task yet.','The deletion is kept in the activity log.','This cannot be undone.']};
+  }
+  return {blocked:'Unknown record.'};
+}
+function applyDelete(s,kind,id){
+  if(!isAdmin())throw new Error('Only an administrator can delete.');
+  const plan=deletePlan(s,kind,id);if(plan.blocked)throw new Error(plan.blocked);
+  s.archive=s.archive||{};
+  if(kind==='warehouse'||kind==='sales'){
+    const key=kind==='warehouse'?'warehouses':'salesTeam';const x=find(s[key],id);const loc=(kind==='warehouse'?'W:':'S:')+id;
+    s.archive[loc]=x.name;s[key]=s[key].filter(y=>y.id!==id);
+    for(const k in s.stock)if(k.startsWith(loc+'|')&&!s.stock[k])delete s.stock[k];
+    log(s,kind==='warehouse'?'Warehouse deleted':'Sales team member deleted',null,x.name,'Deleted',null,x.projectId);
+  }else{
+    const r=find(s.requests,id);const t=taskOf(s,r.ref);
+    if(t){if(t.routeId){const rt=find(s.routes,t.routeId);if(rt)rt.taskIds=rt.taskIds.filter(tid=>tid!==t.id)}s.tasks=s.tasks.filter(x=>x.id!==t.id)}
+    s.requests=s.requests.filter(x=>x.id!==id);
+    log(s,'Order deleted',r.ref,r.type+': '+partyText(s,r)+(r.items.length?', '+itemsText(s,r):'')+'. Status was '+r.status+'.','Deleted',null,r.projectId);
+  }
+}
+async function verifyMyPassword(pw){
+  const u=me();if(!u)return false;
+  if(FB){try{const cu=FB.auth.currentUser;await cu.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(cu.email,pw));return true}catch(e){if(/wrong-password|invalid-credential|invalid-login|user-mismatch/.test(e.code||''))return false;throw e}}
+  return (await hashPw(u.username,pw))===u.hash;
+}
+function openDeleteModal(kind,id){
+  if(!isAdmin()){toast('Only an administrator can delete.','bad');return}
+  const plan=deletePlan(state,kind,id);const m=document.getElementById('modal');
+  m.innerHTML=`<div class="modal-bg" data-act="closeModal" data-self="1"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mdt">
+    <h2 id="mdt">${esc(plan.title||'Delete')}</h2>
+    ${plan.blocked?`<p class="err" style="margin:8px 0 16px">${esc(plan.blocked)}</p><div class="row"><button class="btn plain" data-act="closeModal">Close</button></div>`:
+    `<ul>${plan.points.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+     <form data-form="confirmDelete" data-kind="${esc(kind)}" data-id="${esc(id)}" class="stack" novalidate>
+       <label>Enter your password to confirm<input type="password" name="pw" autocomplete="current-password"></label>
+       <p class="err form-err hide" role="alert"></p>
+       <div class="row"><button class="btn bad" type="submit" style="background:var(--bad);color:#fff">Delete</button><button type="button" class="btn plain" data-act="closeModal">Cancel</button></div>
+     </form>`}
+  </div></div>`;
+  const inp=m.querySelector('input[name=pw]');(inp||m.querySelector('button')).focus();
+}
+function closeModal(){document.getElementById('modal').innerHTML=''}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modal').innerHTML)closeModal()});
 
 /* ---------- Stock validation ---------- */
 function scVarCell(v){return {h:`<strong style="color:${v===0?'var(--ok)':v<0?'var(--bad)':'var(--warn)'}">${v>0?'+':''}${v}</strong>`}}
@@ -1562,6 +1631,16 @@ const forms={
     toast('Administrator created. Start by creating your first project.');
     }catch(e){err('Could not create the administrator: '+(FB?fbErr(e):(e&&e.message||e)))}
   })()},
+  confirmDelete(fd,f){(async()=>{
+    const e=f.querySelector('.form-err'),btn=f.querySelector('button[type=submit]');const show=m=>{e.textContent=m;e.classList.remove('hide');btn.disabled=false;btn.textContent='Delete'};
+    const pw=String(fd.get('pw')||'');if(!pw)return show('Enter your password.');
+    btn.disabled=true;btn.textContent='Checking…';
+    let ok=false;try{ok=await verifyMyPassword(pw)}catch(x){return show(FB?fbErr(x):(x.message||String(x)))}
+    if(!ok)return show('The password is incorrect.');
+    const kind=f.dataset.kind,id=f.dataset.id;const name=(deletePlan(state,kind,id).name)||'Record';
+    closeModal();
+    await act(s=>applyDelete(s,kind,id),name+' deleted.');
+  })()},
   traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
 };
 let toastMsg='';
@@ -1644,6 +1723,8 @@ const acts={
   },'Batches reallocated. Product totals unchanged.')},
   pickProject(el){ui.project=el.dataset.id;ui.expand=null;ui.inv=null;ui.sc=null;render();window.scrollTo(0,0)},
   async backupData(){await saveFile('daf-logistics-backup-'+today()+'.json',JSON.stringify(state,null,1));act(s=>log(s,'Backup downloaded',null,'','',undefined,null))},
+  askDelete(el){openDeleteModal(el.dataset.kind,el.dataset.id)},
+  closeModal(el,ev){closeModal()},
   clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
@@ -1712,7 +1793,7 @@ function filterRouteTasks(){
   const e=document.getElementById('noTasksForAgent');if(e)e.classList.toggle('hide',n>0);
 }
 
-document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;const f=acts[el.dataset.act];if(f){e.preventDefault();f(el)}});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;if(el.dataset.self&&e.target!==el)return;const f=acts[el.dataset.act];if(f){e.preventDefault();f(el)}});
 document.addEventListener('submit',e=>{const f=e.target.closest('form[data-form]');if(!f)return;e.preventDefault();const h=forms[f.dataset.form];if(h)h(new FormData(f),f)});
 function applyCustomer(f,c,typed){
   const card=document.getElementById('custCard');
