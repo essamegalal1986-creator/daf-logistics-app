@@ -247,11 +247,24 @@ button.ref:hover{filter:brightness(.95)}
 <body>
 <div id="app"></div>
 <div id="toast"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* ---------- Constants ---------- */
 /* LIVE_MODE true = starts empty, first visitor creates the administrator; no demo data or demo logins */
 const LIVE_MODE=true;
+/* Firebase online database. Paste your Firebase web app config here to make all users share one live database. */
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyB4emA4yH3UrBDgQE7lj_EWG27lHIebFSU",
+  authDomain:"daf-logistics-609ed.firebaseapp.com",
+  projectId:"daf-logistics-609ed",
+  storageBucket:"daf-logistics-609ed.firebasestorage.app",
+  messagingSenderId:"915311919941",
+  appId:"1:915311919941:web:47eb8265f1a194104c342c"
+};
+const EMAIL_DOMAIN='daf-logistics.app';
 /* Built-in first administrator for the live version. The temporary password must be changed at first sign-in. */
 const FIRST_ADMIN={username:'admin',password:'DafAdmin2026',name:'Administrator'};
 async function liveStart(){const s=migrate(blank());s.users.push({id:'u_admin',username:FIRST_ADMIN.username,name:FIRST_ADMIN.name,role:'admin',projects:[],pages:[...ROLE_PAGES.admin],active:true,mustChange:true,hash:await hashPw(FIRST_ADMIN.username,FIRST_ADMIN.password),createdAt:now()});return s}
@@ -500,13 +513,101 @@ async function saveFile(filename,data,mime){
   }catch(e){toast('Could not save the file.','bad')}
 }
 
+/* ---------- Firebase (online shared database) ---------- */
+let FB=null;
+const FB_CHUNK=400000;
+function fbEmail(u){return String(u||'').trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'_')+'@'+EMAIL_DOMAIN}
+function fbDoc(c,d){return FB.db.collection(c).doc(d)}
+function fbErr(e){const c=(e&&e.code)||'';
+  if(/permission-denied/.test(c))return 'The database refused this action. Check that the Firestore rules are published and that your account is active.';
+  if(/unavailable|network/.test(c))return 'No connection to the database. Check your internet and try again.';
+  if(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c))return 'Username or password is incorrect.';
+  if(/too-many-requests/.test(c))return 'Too many attempts. Wait a few minutes and try again.';
+  if(/email-already-in-use/.test(c))return 'A login with this username already exists.';
+  if(/weak-password/.test(c))return 'The password must be at least 6 characters.';
+  if(/requires-recent-login/.test(c))return 'For security, sign out, sign in again, then change the password.';
+  if(/operation-not-allowed/.test(c))return 'Email/Password sign-in is not enabled in Firebase Authentication.';
+  if(/unauthorized-domain/.test(c))return 'This website address is not in Firebase Authentication, Authorized domains.';
+  return (e&&e.message)||String(e)}
+function fbSplit(str){const parts=[];let i=0;while(i<str.length){let j=Math.min(str.length,i+FB_CHUNK);if(j<str.length){const c=str.charCodeAt(j-1);if(c>=0xD800&&c<=0xDBFF)j--}parts.push(str.slice(i,j));i=j}return parts.length?parts:['']}
+function fbWrite(w,st,oldN){
+  const parts=fbSplit(JSON.stringify(st));
+  parts.forEach((d,i)=>w.set(fbDoc('state','c'+i),{d}));
+  for(let i=parts.length;i<(oldN||0);i++)w.delete(fbDoc('state','c'+i));
+  w.set(fbDoc('state','head'),{rev:st.rev,n:parts.length,by:(me()||{}).username||'setup',at:new Date().toISOString()});
+}
+async function fbReadTx(tx){
+  const h=await tx.get(fbDoc('state','head'));if(!h.exists)return {rev:0,n:0,state:null};
+  const d=h.data();let str='';for(let i=0;i<d.n;i++){const c=await tx.get(fbDoc('state','c'+i));str+=((c.exists&&c.data())||{}).d||''}
+  return {rev:d.rev||0,n:d.n||0,state:str?JSON.parse(str):null};
+}
+async function fbAct(fn,okMsg){
+  try{
+    let out=null;
+    await FB.db.runTransaction(async tx=>{
+      const h=await tx.get(fbDoc('state','head'));const hd=h.exists?h.data():{rev:0,n:0};
+      let base=state;
+      if((hd.rev||0)!==(state.rev||0)){let str='';for(let i=0;i<hd.n;i++){const c=await tx.get(fbDoc('state','c'+i));str+=((c.exists&&c.data())||{}).d||''}base=migrate(str?JSON.parse(str):blank())}
+      const st=structuredClone(base);fn(st);st.rev=(hd.rev||0)+1;fbWrite(tx,st,hd.n);out=st;
+    });
+    state=out;render();
+    const m=okMsg||toastMsg;toastMsg='';if(m)toast(m);
+    return true;
+  }catch(e){toastMsg='';toast(fbErr(e),'bad');return false}
+}
+async function fbReplace(st){
+  let out=null;
+  await FB.db.runTransaction(async tx=>{const h=await tx.get(fbDoc('state','head'));const hd=h.exists?h.data():{rev:0,n:0};st.rev=(hd.rev||0)+1;fbWrite(tx,st,hd.n);out=st});
+  state=out;render();
+}
+function fbSyncAccess(u){if(!FB||!u||!u.fbUid)return Promise.resolve();return fbDoc('access',u.fbUid).set({username:u.username,role:u.role,active:!!u.active},{merge:true}).catch(e=>toast(fbErr(e),'bad'))}
+async function fbCreateLogin(username,password){
+  FB.secondary=FB.secondary||firebase.initializeApp(FIREBASE_CONFIG,'secondary');
+  const a2=FB.secondary.auth();const cred=await a2.createUserWithEmailAndPassword(fbEmail(username),password);const uid=cred.user.uid;await a2.signOut();return uid;
+}
+function noAccessView(){
+  return `<div class="login"><div class="login-card"><div class="app-name"><b>DAF</b> Logistics App</div>
+    <h2 style="margin:10px 0 8px">${FB&&FB.loaded?'No access':'Connecting…'}</h2>
+    <p class="muted" style="margin-bottom:16px">${FB&&FB.denied?'Your account is not active in the database, or the database rules block access. Ask the administrator.':FB&&FB.loaded?'Your login is not linked to an active user in this app. Ask the administrator.':'Loading the shared data.'}</p>
+    <button class="btn plain" data-act="logout">Sign out</button></div></div>`;
+}
+function fbBoot(){
+  FB={loaded:false,denied:false,needSetup:false};
+  FB.app=firebase.initializeApp(FIREBASE_CONFIG);FB.auth=firebase.auth();FB.db=firebase.firestore();
+  state=migrate(blank());render();
+  FB.auth.onAuthStateChanged(async user=>{
+    if(FB.unsub){FB.unsub();FB.unsub=null}
+    FB.user=user;FB.loaded=false;FB.denied=false;session=null;
+    if(!user){
+      state=migrate(blank());
+      try{const m=await fbDoc('meta','setup').get();FB.needSetup=!m.exists}catch(e){FB.needSetup=false}
+      render();return;
+    }
+    render();
+    FB.unsub=fbDoc('state','head').onSnapshot(async snap=>{
+      try{
+        if(!snap.exists){if(!FB.loaded){state=migrate(blank());render()}return}
+        const d=snap.data();if(FB.loaded&&state&&d.rev===state.rev)return;
+        const r=await FB.db.runTransaction(tx=>fbReadTx(tx));
+        state=migrate(r.state||blank());state.rev=r.rev;
+        const first=!FB.loaded;FB.loaded=true;
+        const u=state.users.find(x=>x.fbUid===user.uid);session=u?{uid:u.id}:null;
+        if(first){ui.page=null;ui.project=null;render();if(me())fbAct(st=>log(st,'Signed in',null,me().name+', '+ROLES[me().role],'',me().username,null))}
+        else softRender();
+      }catch(e){toast(fbErr(e),'bad')}
+    },err=>{FB.denied=true;FB.loaded=true;render()});
+  });
+}
+
 /* ---------- Persistence ---------- */
 function persist(){
+  if(FB)return;
   lastJson=JSON.stringify(state);
   try{localStorage.setItem(LS_KEY,lastJson)}catch(e){}
   if(docRef){docRef.set({json:lastJson,rev:state.rev}).catch(e=>toast('Could not save to shared storage: '+(e.message||e.code),'bad'))}
 }
 function act(fn,okMsg){
+  if(FB&&FB.user)return fbAct(fn,okMsg);
   try{
     const s=structuredClone(state);
     fn(s);
@@ -539,7 +640,7 @@ function render(){
   const root=document.getElementById('app');
   if(!state){root.innerHTML='<div class="login"><p class="muted">Loading…</p></div>';return}
   const u=me();
-  if(!u){root.innerHTML=(LIVE_MODE&&!state.users.length)?setupView():loginView();return}
+  if(!u){root.innerHTML=FB?(FB.user?noAccessView():(FB.needSetup?setupView():loginView())):((LIVE_MODE&&!state.users.length)?setupView():loginView());return}
   if(u.mustChange){root.innerHTML=changePwView(u);return}
   const pages=allowedPages(u);
   if(!pages.length){root.innerHTML=`<div class="login"><div class="login-card"><h2>No pages assigned</h2><p class="muted" style="margin:8px 0 16px">Your account has no pages yet. Ask the administrator to grant access.</p><button class="btn" data-act="logout">Sign out</button></div></div>`;return}
@@ -595,7 +696,7 @@ function setupView(){
       <p class="err form-err ${ui.loginError?'':'hide'}" role="alert">${esc(ui.loginError||'')}</p>
       <button class="btn" type="submit">Create administrator and sign in</button>
     </form>
-    <p class="muted small" style="margin-top:14px">Have a backup file? Sign in first, then use Users and access, Backup and restore. Or <label class="link" style="display:inline;font-size:13px">restore it now<input type="file" accept=".json,application/json" data-chg="restoreData" style="display:none"></label>.</p>
+    ${FB?'':`<p class="muted small" style="margin-top:14px">Have a backup file? Sign in first, then use Users and access, Backup and restore. Or <label class="link" style="display:inline;font-size:13px">restore it now<input type="file" accept=".json,application/json" data-chg="restoreData" style="display:none"></label>.</p>`}
   </div></div>`;
 }
 
@@ -613,10 +714,11 @@ function shell(u,pages,projs){
   return `<div class="top">
       <div class="brand"><span class="logo" aria-hidden="true"><span>DAF</span></span><span class="rule" aria-hidden="true"></span><span><b>DAF</b> Logistics App</span></div>
       ${projSel}
-      <div class="who"><div><strong>${esc(u.name)}</strong><span class="muted small">${esc(ROLES[u.role])}</span></div><button class="btn plain sm" data-act="logout">Sign out</button></div>
+      <div class="who"><div><strong>${esc(u.name)}</strong><span class="muted small">${esc(ROLES[u.role])}</span></div>${FB?'<button class="btn plain sm" data-act="myPwOpen">Change password</button>':''}<button class="btn plain sm" data-act="logout">Sign out</button></div>
     </div>
     <div class="layout"><nav class="nav" aria-label="Pages">${nav}</nav>
     <main class="main">
+      ${FB&&ui.pwOpen?`<div class="panel"><h2>Change my password</h2><form data-form="myPw" class="fgrid" novalidate style="margin-top:10px"><label>New password<input type="password" name="p1" autocomplete="new-password"></label><label>Confirm new password<input type="password" name="p2" autocomplete="new-password"></label><div class="row"><button class="btn" type="submit">Save password</button><button type="button" class="btn plain" data-act="myPwClose">Cancel</button></div><p class="err form-err hide" style="grid-column:1/-1"></p></form></div>`:''}
       <div id="pending" class="banner ${ui.pending?'':'hide'}"><span>Another user changed the data.</span><button class="btn sm" data-act="refresh">Show latest</button></div>
       ${page(u)}
     </main></div>`;
@@ -1243,21 +1345,22 @@ function userFields(x,isNew){
 }
 
 function pgUsers(u){
-  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,ROLES[x.role],x.role==='admin'?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
+  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,ROLES[x.role],x.role==='admin'?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${FB&&!x.fbUid?`<button class="btn sm" data-act="fbSetupLogin" data-id="${x.id}">Set up login</button>`:''}${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
     if(ui.expand===x.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="userEdit" data-id="${x.id}">${userFields(x,false)}<div class="row" style="margin-top:12px"><button class="btn" type="submit">Save changes</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('users','The administrator creates every login and decides which projects and pages each person can see.')+`
   <div class="panel"><h2>Create user</h2><form data-form="user">${userFields(null,true)}<div style="margin-top:12px"><button class="btn" type="submit">Create user</button></div></form></div>
   ${table([{l:'Username'},{l:'Name'},{l:'Role'},{l:'Projects'},{l:'Pages',num:1},{l:'Status'},{l:''}],rows)}
   <div class="panel" style="margin-top:18px"><h2>Backup and restore</h2><p class="muted" style="margin-bottom:10px">Download all app data as one file, or restore a backup. Use this to move your data to another copy of the app, for example the GitHub version. Restoring replaces all current data for every user of this page.</p>
-    <div class="row"><button class="btn" data-act="backupData">Download backup</button><label class="btn plain" style="flex-direction:row;color:var(--ink);font-size:15px;cursor:pointer">Restore from backup<input type="file" accept=".json,application/json" data-chg="restoreData" style="display:none"></label>${LIVE_MODE?'<button class="btn bad" data-act="eraseAll">Erase all data</button>':'<button class="btn bad" data-act="resetDemo">Reset to demo data</button>'}</div>
-    ${!docRef?`<p class="note" style="margin-top:12px">Data is saved in this browser on this device. Download a backup regularly, and before clearing your browser data.</p>`:''}</div>`;
+    <div class="row"><button class="btn" data-act="backupData">Download backup</button><label class="btn plain" style="flex-direction:row;color:var(--ink);font-size:15px;cursor:pointer">Restore from backup<input type="file" accept=".json,application/json" data-chg="restoreData" style="display:none"></label>${(LIVE_MODE||FB)?'<button class="btn bad" data-act="eraseAll">Erase all data</button>':'<button class="btn bad" data-act="resetDemo">Reset to demo data</button>'}</div>
+    ${(!docRef&&!FB)?`<p class="note" style="margin-top:12px">Data is saved in this browser on this device. Download a backup regularly, and before clearing your browser data.</p>`:''}</div>`;
 }
 
 /* ---------- Form handlers ---------- */
 const forms={
   async login(fd){
     const un=String(fd.get('username')).trim().toLowerCase();
+    if(FB){try{ui.loginError='';await FB.auth.signInWithEmailAndPassword(fbEmail(un),String(fd.get('password')))}catch(e){ui.loginError=fbErr(e);render()}return}
     const x=state.users.find(v=>v.username===un);
     const h=await hashPw(un,String(fd.get('password')));
     if(!x||x.hash!==h){ui.loginError='Username or password is incorrect.';render();return}
@@ -1362,6 +1465,15 @@ const forms={
   user(fd){(async()=>{
     const un=String(fd.get('username')).trim().toLowerCase();
     if(state.users.some(x=>x.username===un)){toast('Username '+un+' is already taken.','bad');return}
+    if(FB){
+      const pw=String(fd.get('password')||'');if(pw.length<6){toast('The password must be at least 6 characters.','bad');return}
+      if(!fd.getAll('pages').length){toast('Give the user at least one page.','bad');return}
+      let uid;try{uid=await fbCreateLogin(un,pw)}catch(e){toast(fbErr(e),'bad');return}
+      const role=fd.get('role');
+      try{await fbDoc('access',uid).set({username:un,role,active:true})}catch(e){toast(fbErr(e),'bad');return}
+      await act(s=>{s.users.push({id:rid('u'),username:un,name:String(fd.get('name')).trim(),role,projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,fbUid:uid,createdAt:now()});log(s,'User created',null,un+', '+ROLES[role],'Active',null,null)},'User created. Share the username and password with them.');
+      return;
+    }
     const h=await hashPw(un,String(fd.get('password')));
     act(s=>{const x={id:rid('u'),username:un,name:String(fd.get('name')).trim(),role:fd.get('role'),projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,hash:h,createdAt:now()};
       if(!x.pages.length)throw new Error('Give the user at least one page.');
@@ -1369,11 +1481,14 @@ const forms={
   })()},
   userEdit(fd,f){(async()=>{
     const x0=find(state.users,f.dataset.id);const pw=String(fd.get('password')||'');
-    const h=pw?await hashPw(x0.username,pw):null;
-    act(s=>{const x=find(s.users,f.dataset.id);x.name=String(fd.get('name')).trim();x.role=fd.get('role');x.projects=fd.getAll('projects');x.pages=fd.getAll('pages');if(h)x.hash=h;
+    if(FB&&pw){if(x0.id!==me().id){toast('In the online version only the user can change their own password (Change password at the top). For a forgotten password, deactivate this user and create a new username.','bad');return}
+      try{await FB.auth.currentUser.updatePassword(pw)}catch(e){toast(fbErr(e),'bad');return}}
+    const h=(!FB&&pw)?await hashPw(x0.username,pw):null;
+    await act(s=>{const x=find(s.users,f.dataset.id);x.name=String(fd.get('name')).trim();x.role=fd.get('role');x.projects=fd.getAll('projects');x.pages=fd.getAll('pages');if(h)x.hash=h;
       if(!x.pages.length)throw new Error('Give the user at least one page.');
       if(x.id===me().id&&!x.pages.includes('users'))throw new Error('Keep the Users and access page on your own account.');
-      log(s,'User updated',null,x.username+(h?', password changed':''),'',null,null);ui.expand=null},'User saved.');
+      log(s,'User updated',null,x.username+((h||(FB&&pw))?', password changed':''),'',null,null);ui.expand=null},'User saved.');
+    if(FB)fbSyncAccess(find(state.users,f.dataset.id));
   })()},
   backStock(fd,f){act(s=>{
     const r=find(s.requests,f.dataset.id);if(r.status!=='Failed')throw new Error('Only failed requests can go back to stock.');
@@ -1417,6 +1532,10 @@ const forms={
       ui.page='projects';render();toast('Your account is ready. Start by creating your first project.');
     }catch(e){err('Could not save: '+(e&&e.message||e))}
   })()},
+  myPw(fd,f){(async()=>{const e=f.querySelector('.form-err');const p1=String(fd.get('p1')||''),p2=String(fd.get('p2')||'');
+    const show=m=>{e.textContent=m;e.classList.remove('hide')};
+    if(p1.length<6)return show('The password must be at least 6 characters.');if(p1!==p2)return show('The two passwords do not match.');
+    try{await FB.auth.currentUser.updatePassword(p1);ui.pwOpen=false;render();toast('Password changed.');act(s=>log(s,'Password changed',null,me().username,'',null,null))}catch(x){show(fbErr(x))}})()},
   firstAdmin(fd,f){(async()=>{
     const btn=f.querySelector('button[type=submit]');
     const err=m=>{const e=f.querySelector('.form-err');e.textContent=m;e.classList.remove('hide');btn.disabled=false;btn.textContent='Create administrator and sign in'};
@@ -1429,11 +1548,19 @@ const forms={
     if(pw.length<8)return err('The password must be at least 8 characters.');
     if(pw!==String(fd.get('password2')||''))return err('The two passwords do not match.');
     btn.disabled=true;btn.textContent='Creating…';
+    if(FB){
+      let uid;try{uid=(await FB.auth.createUserWithEmailAndPassword(fbEmail(un),pw)).user.uid}catch(e){if(/email-already-in-use/.test(e.code||'')){uid=(await FB.auth.signInWithEmailAndPassword(fbEmail(un),pw)).user.uid}else throw e}
+      const st=migrate(blank());st.users.push({id:rid('u'),username:un,name,role:'admin',projects:[],pages:[...ROLE_PAGES.admin],active:true,fbUid:uid,createdAt:now()});st.rev=0;
+      log(st,'Administrator created',null,un,'Active',un,null);
+      const b=FB.db.batch();b.set(fbDoc('access',uid),{username:un,role:'admin',active:true});b.set(fbDoc('meta','setup'),{done:true,adminUid:uid,at:new Date().toISOString()});st.rev=1;fbWrite(b,st,0);
+      try{await b.commit()}catch(e){throw new Error(fbErr(e))}
+      FB.needSetup=false;toast('Administrator created. Start by creating your first project.');return;
+    }
     const h=await hashPw(un,pw);const id=rid('u');
     act(s=>{s.users.push({id,username:un,name,role:'admin',projects:[],pages:[...ROLE_PAGES.admin],active:true,hash:h,createdAt:now()});log(s,'Administrator created',null,un,'Active',un,null)});
     session={uid:id};try{sessionStorage.setItem(SS_KEY,JSON.stringify(session))}catch(e){}ui.loginError='';ui.page='projects';render();
     toast('Administrator created. Start by creating your first project.');
-    }catch(e){err('Could not create the administrator: '+(e&&e.message||e))}
+    }catch(e){err('Could not create the administrator: '+(FB?fbErr(e):(e&&e.message||e)))}
   })()},
   traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
 };
@@ -1467,7 +1594,13 @@ function completeTask(s,t,r){
 /* ---------- Click handlers ---------- */
 const acts={
   nav(el){ui.page=el.dataset.page;ui.expand=null;ui.pending=false;render();window.scrollTo(0,0)},
-  logout(){act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
+  async logout(){if(FB){if(me())await fbAct(s=>log(s,'Signed out',null,'','',undefined,null));ui.pwOpen=false;await FB.auth.signOut();return}act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
+  myPwOpen(){ui.pwOpen=true;render()},
+  myPwClose(){ui.pwOpen=false;render()},
+  async fbSetupLogin(el){const x=find(state.users,el.dataset.id);if(!x)return;const pw=prompt('Choose a password for '+x.username+' (at least 6 characters). Share it with them; they can change it after signing in.');if(pw===null)return;if(pw.length<6){toast('The password must be at least 6 characters.','bad');return}
+    let uid;try{uid=await fbCreateLogin(x.username,pw)}catch(e){toast(fbErr(e),'bad');return}
+    try{await fbDoc('access',uid).set({username:x.username,role:x.role,active:!!x.active})}catch(e){toast(fbErr(e),'bad');return}
+    await act(s=>{const y=find(s.users,x.id);y.fbUid=uid;log(s,'Login set up',null,y.username,'Active',null,null)},'Login ready. '+x.username+' can sign in now.')},
   fillDemo(el){const f=document.querySelector('form[data-form="login"]');f.elements.username.value=el.dataset.u;f.elements.password.value=el.dataset.p;f.querySelector('button[type=submit]').focus()},
   refresh(){ui.pending=false;render()},
   addLine(){const tpl=document.getElementById('lineTpl');document.getElementById('lines').appendChild(tpl.content.cloneNode(true))},
@@ -1487,8 +1620,9 @@ const acts={
   taskFail(el){const why=(document.getElementById('why_'+el.dataset.id)||{}).value||'';if(!why.trim()){toast('Write the reason the stop failed, then mark it failed.','bad');document.getElementById('why_'+el.dataset.id).focus();return}
     act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);t.status='Failed';t.failedAt=now();t.failReason=why.trim();r.status='Failed';r.failReason=why.trim();log(s,'Task failed',r.ref,t.id+': '+why.trim(),'Failed',null,r.projectId)},'Stop marked failed. The team leader can reassign it.')},
   delGroup(el){const g=find(state.routeGroups,el.dataset.id);if(!g||!confirm('Delete route group '+g.name+' from all projects? Existing routes keep their stops.'))return;act(s=>{s.routeGroups=s.routeGroups.filter(x=>x.id!==g.id);log(s,'Route group deleted',null,g.name)},'Route group deleted.')},
-  toggleUser(el){act(s=>{const x=find(s.users,el.dataset.id);x.active=!x.active;log(s,x.active?'User activated':'User deactivated',null,x.username,x.active?'Active':'Inactive',null,null)})},
-  async eraseAll(){const t=prompt('This deletes ALL data: projects, products, stock, orders and users. Type ERASE to confirm.');if(t!=='ERASE'){if(t!==null)toast('Nothing was erased.');return}
+  async toggleUser(el){await act(s=>{const x=find(s.users,el.dataset.id);x.active=!x.active;log(s,x.active?'User activated':'User deactivated',null,x.username,x.active?'Active':'Inactive',null,null)});if(FB)fbSyncAccess(find(state.users,el.dataset.id))},
+  async eraseAll(){if(FB){const t=prompt('This deletes ALL business data: projects, products, stock, orders and history. User accounts are kept. Type ERASE to confirm.');if(t!=='ERASE'){if(t!==null)toast('Nothing was erased.');return}const st=migrate(blank());st.users=structuredClone(state.users);try{await fbReplace(st);toast('All business data erased.')}catch(e){toast(fbErr(e),'bad')}return}
+    const t=prompt('This deletes ALL data: projects, products, stock, orders and users. Type ERASE to confirm.');if(t!=='ERASE'){if(t!==null)toast('Nothing was erased.');return}
     state=await liveStart();state.rev=Date.now();session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}ui.page=null;ui.project=null;persist();render();toast('All data erased.')},
   async resetDemo(){if(!confirm('Replace all data with the demo data for every user?'))return;const s=await seedState();s.rev=(state.rev||0)+1;state=s;ui.expand=null;ui.traceRef='';persist();render();toast('Demo data restored.')},
   scView(el){ui.sc=ui.sc||{};ui.sc.view=el.dataset.id;render();window.scrollTo(0,0)},
@@ -1555,6 +1689,8 @@ const changes={
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
       if(!obj||!(obj.v===1||obj.v===2)||!Array.isArray(obj.users)||!Array.isArray(obj.projects)){toast('This file is not a DAF Logistics backup.','bad');return}
       if(!confirm('Replace ALL current data with this backup ('+obj.projects.length+' projects, '+(obj.requests||[]).length+' requests, '+obj.users.length+' users)? This affects every user.'))return;
+      if(FB){const st=migrate(obj);const curU=state.users;st.users=[...structuredClone(curU),...st.users.filter(u=>!curU.some(c=>c.username===u.username)).map(u=>{const c={...u};delete c.hash;c.fbUid='';return c})];
+        fbReplace(st).then(()=>toast('Backup restored. Users from the backup need Set up login on the Users page.')).catch(e=>toast(fbErr(e),'bad'));return}
       const keepRev=state.rev||0;state=migrate(obj);state.rev=Math.max(state.rev||0,keepRev)+1;ui.expand=null;ui.traceRef='';ui.project=null;
       if(!me()){session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}}
       persist();render();toast('Backup restored.')};
@@ -1592,6 +1728,7 @@ window.addEventListener('error',e=>{try{toast('Unexpected error: '+(e.message||'
 window.addEventListener('unhandledrejection',e=>{try{toast('Unexpected error: '+((e.reason&&e.reason.message)||e.reason||'unknown'),'bad')}catch(x){}});
 /* ---------- Boot ---------- */
 async function boot(){
+  if(FIREBASE_CONFIG){if(window.firebase&&firebase.initializeApp){try{fbBoot()}catch(e){document.getElementById('app').innerHTML='<div class="login"><div class="login-card"><h2>Setup problem</h2><p class="muted">'+esc(e.message||e)+'</p></div></div>'}}else{document.getElementById('app').innerHTML='<div class="login"><div class="login-card"><h2>Cannot reach the database</h2><p class="muted">The Firebase library did not load. Check your internet connection and reload the page.</p></div></div>'}return}
   render();
   let loaded=null;try{loaded=JSON.parse(localStorage.getItem(LS_KEY)||'null')}catch(e){}
   state=(loaded&&(loaded.v===1||loaded.v===2)&&loaded.users&&(loaded.users.length||!LIVE_MODE))?migrate(loaded):(LIVE_MODE?await liveStart():await seedState());
