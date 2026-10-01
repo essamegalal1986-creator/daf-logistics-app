@@ -988,12 +988,17 @@ function pgRequests(u){
     <div class="fgrid">
       <label>Request type<select name="type" data-chg="reqType" required>${Object.keys(TYPES).map(t=>`<option>${t}</option>`).join('')}</select></label>
       <label>Governorate<select name="govId" required>${opts(govsSorted(),'',null,'Choose governorate')}</select></label>
-      <label class="w-customer">Customer ID<input name="custCode" data-inp="custId" list="custCodes" placeholder="Type the customer ID" autocomplete="off" autocapitalize="characters" spellcheck="false"><datalist id="custCodes">${P(state.customers).map(c=>`<option value="${esc(c.code||'')}">${esc(c.name)}</option>`).join('')}</datalist></label>
+      <label class="w-customer">Customer ID <button type="button" class="link" data-act="reqNewOpen" style="font-size:13px;align-self:flex-start">+ New customer</button><input name="custCode" data-inp="custId" list="custCodes" placeholder="Type the customer ID" autocomplete="off" autocapitalize="characters" spellcheck="false"><datalist id="custCodes">${P(state.customers).map(c=>`<option value="${esc(c.code||'')}">${esc(c.name)}</option>`).join('')}</datalist></label>
       <label class="w-customer">Customer<select name="customerId" data-chg="reqCustomer">${opts(P(state.customers),'',custLabel,'Choose customer')}</select></label>
       <label class="w-transfer hide">Transfer to<select name="dest"><option value="">Choose sales agent or warehouse</option>${dests}</select></label>
       <label class="w-received hide">Supplier or source<input name="supplier" placeholder="Optional"></label>
     </div>
     <div id="custCard" class="w-customer"></div>
+    <div id="reqNew" class="panel hide" style="background:var(--sunk);margin:0">
+      <div class="spread" style="margin-bottom:8px"><strong>New customer</strong><button type="button" class="btn plain sm" data-act="reqNewCancel">Cancel new customer</button></div>
+      <p class="muted small" style="margin-bottom:10px">Saved to the customer list of this project together with the request. The Customer ID and Governorate are taken from the fields above.</p>
+      <div class="fgrid"><label>Customer name<input name="rnc_name"></label><label>Address<input name="rnc_address"></label><label>Phone<input name="rnc_phone"></label></div>
+    </div>
     <p class="note" id="typeHelp">${esc(TYPES.Delivery.help)}</p>
     <div id="lines" class="stack">${productLine(prods,true)}</div>
     <div><button type="button" class="btn ghost sm" data-act="addLine">Add product line</button> <span class="muted small w-doc hide">Products are optional for documentation.</span></div>
@@ -1543,21 +1548,31 @@ const forms={
     move(s,{ref:'OPENING',type:'Opening stock',projectId:(find(s.products,fd.get('product'))||{}).projectId||ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:'W:'+fd.get('wh')});
     log(s,'Opening stock added',null,q+' × '+nm(s.products,fd.get('product'))+', batch '+batchNo(s,bid)+' into '+nm(s.warehouses,fd.get('wh')),'');
   },'Opening stock added.')},
-  request(fd){act(s=>{
+  request(fd){
+    const rn=document.getElementById('reqNew');let nc=null;
+    if(rn&&!rn.classList.contains('hide')&&TYPES[fd.get('type')].customer){
+      const code=String(fd.get('custCode')||'').trim().toUpperCase(),name=String(fd.get('rnc_name')||'').trim();
+      const fail=m=>{toast(m,'bad')};
+      if(!code)return fail('Enter the Customer ID for the new customer.');if(!name)return fail('Enter the new customer\'s name.');if(!fd.get('govId'))return fail('Choose the governorate for the new customer.');
+      if(custByCode(code))return fail('Customer ID '+code+' already exists. Pick that customer instead.');
+      nc={id:rid('cus'),projectId:ui.project,code,name,govId:fd.get('govId'),address:String(fd.get('rnc_address')||'').trim(),phone:String(fd.get('rnc_phone')||'').trim()};
+    }
+    act(s=>{
+    if(nc){if(s.customers.some(x=>(x.projectId===ALL||x.projectId===nc.projectId)&&(x.code||'').toUpperCase()===nc.code))throw new Error('Customer ID '+nc.code+' already exists.');s.customers.push(nc);log(s,'Customer added',null,nc.code+' '+nc.name+', from a request','',null,nc.projectId)}
     const type=fd.get('type'),T=TYPES[type];
     const ps=fd.getAll('item_product'),qs=fd.getAll('item_qty');const bs=[...document.querySelectorAll('#lines .line')].map(l=>{const pid=l.querySelector('select[name=item_product]').value,txt=l.querySelector('input[name=item_batch]').value;if(!pid||!txt.trim())return '';const b=findBatch(s,pid,txt);if(!b)throw new Error('Batch '+txt.trim()+' was not found for '+nm(s.products,pid)+'. Pick one from the list.');if(!allowedBatches(s,pid,type).some(x=>x.id===b.id))throw new Error('Batch '+b.batchNo+' has no stock available.');return b.id});const items=[];
     ps.forEach((p,i)=>{const q=Math.floor(Number(qs[i]));if(!p&&!qs[i])return;if(!p)throw new Error('Choose a product on every line with a quantity.');if(!bs[i])throw new Error('Choose a batch for '+nm(s.products,p)+'.');if(!(q>0))throw new Error('Enter a quantity above zero for '+nm(s.products,p)+'.');items.push({productId:p,batchId:bs[i],qty:q,warehouseId:''})});
     if(['out','move'].includes(T.flow)){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
     if(!items.length&&type!=='Documentation')throw new Error('Add at least one product and quantity.');
     const r={projectId:ui.project,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:now(),createdBy:cur()};
-    if(T.customer){r.customerId=fd.get('customerId');const typed=String(fd.get('custCode')||'').trim();if(!r.customerId)throw new Error(typed?'No customer with ID '+typed+' in this project.':'Enter the customer ID or choose the customer.')}
+    if(T.customer){r.customerId=nc?nc.id:fd.get('customerId');const typed=String(fd.get('custCode')||'').trim();if(!r.customerId)throw new Error(typed?'No customer with ID '+typed+' in this project.':'Enter the customer ID or choose the customer.')}
     r.govId=fd.get('govId');if(!r.govId)throw new Error('Choose the governorate.');
     if(type==='Transfer'){r.dest=fd.get('dest');if(!r.dest)throw new Error('Choose where the stock is transferred to.')}
     if(type==='Received')r.supplier=String(fd.get('supplier')||'').trim();
     r.ref=nextRef(s);r.id=r.ref;
     s.requests.push(r);
     log(s,'Request created',r.ref,type+': '+partyText(s,r)+(items.length?', '+itemsText(s,r):''),'New');
-    toastMsg='Request '+r.ref+' created.';
+    toastMsg='Request '+r.ref+' created'+(nc?' and customer '+nc.code+' added':'')+'.';
   },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   prepare(fd,f){act(s=>{
     const r=find(s.requests,f.dataset.id),T=TYPES[r.type];
@@ -1817,6 +1832,8 @@ const acts={
   async backupData(){await saveFile('daf-logistics-backup-'+today()+'.json',JSON.stringify(state,null,1));act(s=>log(s,'Backup downloaded',null,'','',undefined,null))},
   askDelete(el){openDeleteModal(el.dataset.kind,el.dataset.id)},
   closeModal(el,ev){closeModal()},
+  reqNewOpen(){reqNewToggle(true)},
+  reqNewCancel(){reqNewToggle(false);const f=document.getElementById('reqForm');const t=f.elements.custCode.value.trim();applyCustomer(f,custByCode(t),t)},
   soNewOpen(){soNewToggle(true)},
   soNewCancel(){soNewToggle(false);const f=document.getElementById('soForm');const c=custByCode(f.elements.soCode.value);if(c){f.elements.customerId.value=c.id;document.getElementById('soCard').innerHTML=custCard(c)}},
   soAdd(){document.getElementById('soLines').appendChild(document.getElementById('soTpl').content.cloneNode(true))},
@@ -1849,6 +1866,7 @@ const changes={
   reqType(el){
     const f=el.form,T=TYPES[el.value];
     f.querySelectorAll('.w-customer').forEach(x=>x.classList.toggle('hide',!T.customer));
+    if(!T.customer)reqNewToggle(false);
     f.querySelector('.w-transfer').classList.toggle('hide',el.value!=='Transfer');
     f.querySelector('.w-received').classList.toggle('hide',el.value!=='Received');
     f.querySelector('.w-doc').classList.toggle('hide',el.value!=='Documentation');
@@ -1885,7 +1903,7 @@ const changes={
       persist();render();toast('Backup restored.')};
     rd.readAsText(file)},
   rlist(el){ui.routeF=ui.routeF||{gov:'',group:''};ui.routeF[el.dataset.k]=el.value;render()},
-  reqCustomer(el){const c=find(state.customers,el.value);el.form.elements.custCode.value=c?(c.code||''):'';applyCustomer(el.form,c,'')},
+  reqCustomer(el){if(el.value)reqNewToggle(false);const c=find(state.customers,el.value);el.form.elements.custCode.value=c?(c.code||''):'';applyCustomer(el.form,c,'')},
   userRole(el){const f=el.form;const set=ROLE_PAGES[el.value]||[];f.querySelectorAll('input[name=pages]').forEach(c=>c.checked=set.includes(c.value))},
   rf(el){ui.rf[el.dataset.k]=el.value;render()}
 };
@@ -1906,8 +1924,9 @@ document.addEventListener('submit',e=>{const f=e.target.closest('form[data-form]
 function applyCustomer(f,c,typed){
   const card=document.getElementById('custCard');
   if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;card.innerHTML=custCard(c)}
-  else{f.elements.customerId.value='';card.innerHTML=typed?`<p class="err">No customer with ID ${esc(typed)} in this project.</p>`:''}
+  else{f.elements.customerId.value='';const n=document.getElementById('reqNew');const open=n&&!n.classList.contains('hide');card.innerHTML=(typed&&!open)?`<div class="row"><span class="err">No customer with ID ${esc(typed)} in this project.</span><button type="button" class="btn ghost sm" data-act="reqNewOpen">Add as new customer</button></div>`:''}
 }
+function reqNewToggle(on){const n=document.getElementById('reqNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('reqForm');if(on){f.elements.customerId.value='';document.getElementById('custCard').innerHTML='';(f.elements.custCode.value.trim()?f.elements.rnc_name:f.elements.custCode).focus()}}
 function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
 function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
 document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
