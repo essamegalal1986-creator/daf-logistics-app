@@ -176,6 +176,11 @@ button.ref:hover{filter:brightness(.95)}
 .modal ul{margin:8px 0 12px 18px;padding:0;font-size:14px}
 .soline{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 90px 110px auto;gap:8px;align-items:start}
 @media (max-width:760px){.soline{grid-template-columns:1fr 1fr}}
+.pick table{font-size:14px}
+.pick tfoot td{border-top:1px solid var(--line);background:var(--sunk)}
+.stop .pick{max-width:640px}
+.loadlist{border-bottom:1px solid var(--line);padding:10px 16px;background:var(--surface)}
+.loadlist summary{cursor:pointer;color:var(--route)}
 .abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
 .abar i{display:block;height:100%}
 .b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
@@ -1058,12 +1063,30 @@ function tripNo(s,pid,peek){s.seq.trip=s.seq.trip||{};const pj=pid==='__all'?{co
 function routeGovs(rt){return [...new Set(rt.taskIds.map(id=>{const t=find(state.tasks,id);const r=t&&find(state.requests,t.requestId);return r&&r.govId}).filter(Boolean))]}
 function routeStatus(rt){const ts=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean);if(!ts.length)return 'Planned';if(ts.every(t=>['Completed','Failed'].includes(t.status)))return 'Done';if(ts.some(t=>['In transit','Completed','Failed'].includes(t.status)))return 'In progress';return 'Planned'}
 
+/* Pick list: what to collect (or where to put back) for each product of a request */
+function pickHead(r){const f=(TYPES[r.type]||{}).flow;return f==='in'?(r.type==='Received'?'Receive into':'Return to'):f==='none'?'Location':'Collect from'}
+function pickTable(r,compact){
+  if(!r.items.length)return compact?'':'<p class="muted small">No products on this order.</p>';
+  const T=TYPES[r.type]||{};
+  const rows=r.items.map(it=>{const b=find(state.batches,it.batchId)||{};const p=find(state.products,it.productId)||{};const loc=itemLoc(it);
+    return `<tr><td><strong>${esc(p.name||'?')}</strong>${compact?'':`<br><span class="muted small">${esc(p.sku||'')}</span>`}</td><td class="code">${esc(b.batchNo||'')}${!compact&&b.expiry?`<br><span class="muted small" style="font-family:var(--body);font-weight:500">exp ${esc(fmtD(b.expiry))}</span>`:''}</td><td class="num"><strong>${it.qty}</strong>${p.unit&&!compact?` <span class="muted small">${esc(p.unit)}</span>`:''}</td><td>${T.flow==='none'?'<span class="muted">No stock movement</span>':loc?`<strong>${esc(locName(state,loc))}</strong>`:'<span class="muted">Not chosen yet</span>'}</td></tr>`}).join('');
+  const tot=r.items.reduce((a,it)=>a+Number(it.qty||0),0);
+  return `<div class="tbl pick" style="margin-top:8px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>${pickHead(r)}</th></tr></thead><tbody>${rows}</tbody>${r.items.length>1?`<tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot}</strong></td><td></td></tr></tfoot>`:''}</table></div>`;
+}
+/* Loading list for a whole trip: everything to collect, grouped by location */
+function loadingList(rt){
+  const g={};
+  rt.taskIds.map(id=>find(state.tasks,id)).filter(t=>t&&['Routed','In transit'].includes(t.status)).forEach(t=>{const r=find(state.requests,t.requestId);if(!r)return;const f=(TYPES[r.type]||{}).flow;if(f!=='out'&&f!=='move')return;
+    r.items.forEach(it=>{const loc=itemLoc(it);const k=loc+'|'+it.productId+'|'+it.batchId;(g[loc]=g[loc]||{});const row=g[loc][k]||(g[loc][k]={productId:it.productId,batchId:it.batchId,qty:0,refs:[]});row.qty+=Number(it.qty);if(!row.refs.includes(r.ref))row.refs.push(r.ref)})});
+  const locs=Object.keys(g);if(!locs.length)return '';
+  return `<details class="loadlist"><summary><strong>Loading list</strong> <span class="muted small">what to collect before leaving, by location</span></summary>${locs.map(loc=>`<h3 style="margin:12px 0 6px;font-size:15px">${esc(locName(state,loc)||'Location not chosen')}</h3><div class="tbl"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>Orders</th></tr></thead><tbody>${Object.values(g[loc]).map(x=>`<tr><td><strong>${esc(nm(state.products,x.productId))}</strong></td><td class="code">${esc(batchNo(state,x.batchId))}</td><td class="num"><strong>${x.qty}</strong></td><td class="small">${x.refs.map(esc).join(', ')}</td></tr>`).join('')}</tbody></table></div>`).join('')}</details>`;
+}
 function stopBody(t,r){
   const T=TYPES[r.type];let where='';
   if(T.customer){const c=find(state.customers,r.customerId)||{};where=`<strong>${esc(custLabel(c))}</strong><br><span class="muted small">${r.govId?esc(govName(r.govId))+', ':''}${esc(c.address||'')}${c.phone?', '+esc(c.phone):''}</span>`}
   else if(r.type==='Transfer')where=`<strong>Transfer to ${esc(locName(state,r.dest))}</strong>${r.govId?`<br><span class="muted small">${esc(govName(r.govId))}</span>`:''}`;
   else where=`<strong>Receive stock</strong>${r.supplier?`<br><span class="muted small">From ${esc(r.supplier)}</span>`:''}`;
-  const items=r.items.length?`<ul class="items">${r.items.map(it=>`<li>${it.qty} × ${esc(nm(state.products,it.productId))} <span class="code">${esc(batchNo(state,it.batchId))}</span>${itemLoc(it)?` <span class="muted">(${esc(T.wh.toLowerCase())} ${esc(locName(state,itemLoc(it)))})</span>`:''}</li>`).join('')}</ul>`:'';
+  const items=pickTable(r,true);
   return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}</div><div style="margin-top:6px">${where}</div>${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
 }
 
@@ -1078,7 +1101,7 @@ function routeCard(rt,agentView){
         <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
     }
     return `<div class="stop ${t.status==='Completed'?'is-done':t.status==='Failed'?'is-failed':''}"><span class="stop-n">${i+1}</span><div>${stopBody(t,r)}${actions}</div></div>`}).join('');
-  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
+  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${loadingList(rt)}${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
 }
 
 function pgRoutes(u){
@@ -1430,13 +1453,15 @@ function traceView(ref){
     <div class="spread" style="margin-bottom:12px"><div class="row">${refTag(ref,true)}<span class="ty">${esc(r.type)}</span>${st(r.status)}</div><button class="btn plain sm" data-act="clearTrace">Close trace</button></div>
     <div style="margin-bottom:14px">${chain(state,r)}</div>
     <div class="kv" style="margin-bottom:16px">
-      <div><span>Request</span>${esc(partyText(state,r))}<br><span>${esc(itemsText(state,r)||'No products')}</span></div>
-      <div><span>Task</span>${t?`<span class="code">${esc(t.id)}</span>, ${esc(nm(state.agents,t.agentId))}, ${fmtD(t.date)} ${st(t.status)}`:'Not prepared yet'}</div>
+      <div><span>Request</span>${esc(partyText(state,r))}<br><span>${r.items.length} product line${r.items.length===1?'':'s'}, ${r.items.reduce((a,it)=>a+Number(it.qty||0),0)} units</span></div>
+      <div><span>Task</span>${t?`<span class="code">${esc(t.id)}</span><br>${t.agentId?esc(nm(state.agents,t.agentId))+', '+fmtD(t.date):'<span class="muted">Agent and date are set on the trip</span>'}<br>${st(t.status)}`:'Not prepared yet'}</div>
       <div><span>Route</span>${rt?`<span class="code">${esc(rt.name)}</span>${rt.note?' '+esc(rt.note):''}, ${fmtD(rt.date)}`:'Not routed yet'}</div>
       <div><span>Sale</span>${sale?`<span class="code">${esc(sale.id)}</span>, ${money(sale.total)}`:(r.type==='Delivery'?'Recorded on completion':'Not a sale')}</div>
       <div><span>Stock movements</span>${mv.length?mv.map(m=>`${m.qty} × ${esc(nm(state.products,m.productId))} (batch ${esc(batchNo(state,m.batchId))}): ${esc(locName(state,m.from))} to ${esc(locName(state,m.to))}`).join('<br>'):(r.type==='Documentation'?'None, documentation only':'Posted on completion')}</div>
     </div>
-    <h3 style="margin-bottom:10px">Audit trail</h3>
+    <h3 style="margin-bottom:4px">Products to ${(TYPES[r.type]||{}).flow==='in'?'return':'prepare'}</h3>
+    ${pickTable(r,false)}
+    <h3 style="margin:18px 0 10px">Audit trail</h3>
     <ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol>
   </div>`;
 }
