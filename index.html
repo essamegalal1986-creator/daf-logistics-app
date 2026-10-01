@@ -174,6 +174,8 @@ button.ref:hover{filter:brightness(.95)}
 .modal{background:var(--surface);color:var(--ink);border-radius:12px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:4px solid var(--bad)}
 .modal h2{margin-bottom:8px}
 .modal ul{margin:8px 0 12px 18px;padding:0;font-size:14px}
+.soline{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 90px 110px auto;gap:8px;align-items:start}
+@media (max-width:760px){.soline{grid-template-columns:1fr 1fr}}
 .abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
 .abar i{display:block;height:100%}
 .b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
@@ -487,7 +489,7 @@ function move(s,m,by){
   s.movements.push({id:'MOV-'+pad(++s.seq.mov,5),at:now(),by:by||cur(),...m});
 }
 function log(s,action,ref,detail,status,by,projectId){
-  s.log.push({id:'LOG-'+pad(++s.seq.log,5),at:now(),by:by||cur(),projectId:projectId===undefined?((ref&&(s.requests.find(r=>r.ref===ref)||s.counts&&s.counts.find(c=>c.id===ref)||{}).projectId)||(isAll()?null:ui.project)):projectId,action,ref:ref||'',detail:detail||'',status:status||''});
+  s.log.push({id:'LOG-'+pad(++s.seq.log,5),at:now(),by:by||cur(),projectId:projectId===undefined?((ref&&(s.requests.find(r=>r.ref===ref)||s.counts&&s.counts.find(c=>c.id===ref)||s.sales.find(x=>x.ref===ref)||{}).projectId)||(isAll()?null:ui.project)):projectId,action,ref:ref||'',detail:detail||'',status:status||''});
 }
 function nextRef(s){return 'ORD-'+new Date().getFullYear()+'-'+pad(++s.seq.ord,4)}
 function taskOf(s,ref){return s.tasks.find(t=>t.ref===ref)}
@@ -1123,14 +1125,47 @@ function pgMyTasks(u){
   (done.length?`<h2 style="margin:18px 0 10px">Recently finished</h2>`+done.map(r=>routeCard(r,false)).join(''):'');
 }
 
+function soLine(){
+  return `<div class="soline"><label>Product<select name="so_product" data-chg="soProduct"><option value="">Choose product</option>${P(state.products).map(p=>`<option value="${p.id}">${esc(p.sku)} ${esc(p.name)}</option>`).join('')}</select></label>
+    <label>Batch<select name="so_batch" data-chg="soBatch" disabled><option value="">Choose product first</option></select></label>
+    <label>Deduct from<select name="so_loc" data-chg="soLoc" disabled><option value="">Choose batch first</option></select></label>
+    <label>Quantity<input name="so_qty" type="number" min="1" step="1" data-inp="soCalc"></label>
+    <label>Unit price<input name="so_price" type="number" min="0" step="0.01" data-inp="soCalc"></label>
+    <button type="button" class="btn plain sm" data-act="soRm" style="margin-top:22px">Remove</button></div>`;
+}
+function soLocsFor(pid,bid){const p=find(state.products,pid);if(!p)return [];return projLocs(state,p.projectId).map(l=>[l[0],l[1],l[2],qty(state,l[0],pid,bid)]).filter(l=>l[3]>0)}
+function canDirect(u){return ['admin','ops','lead'].includes(u.role)}
 function pgSales(u){
   if(!ui.project)return ph('sales')+needProject();
   const S=P(state.sales).slice().reverse();
   const total=S.reduce((a,x)=>a+x.total,0);
-  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)),fmtD(x.date),custLabel(find(state.customers,x.customerId)),nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}`).join('<br>')),{h:money(x.total)}]);
-  return ph('sales','Each completed delivery is recorded here automatically as a sales entry, under the same reference number as its order.')+`
-  <div class="stats"><div class="stat"><b>${S.length}</b><span>Sales entries</span></div><div class="stat"><b>${money(total)}</b><span>Total value</span></div><div class="stat"><b>${money(S.filter(x=>x.date===today()).reduce((a,x)=>a+x.total,0))}</b><span>Today</span></div></div>
-  ${table([{l:'Sale'},{l:'Reference'},{l:'Date'},{l:'Customer'},{l:'Agent'},{l:'Lines'},{l:'Total',num:1}],rows,'No sales yet. A sale is recorded when an agent completes a delivery.')}`;
+  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)+projTag(x.projectId)),H(x.direct?'<span class="ptag" style="margin:0">Direct</span>':'<span class="muted small">Delivery</span>'),fmtD(x.date),custLabel(find(state.customers,x.customerId)),x.direct?'':nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}${l.loc?` <span class="muted small">from ${esc(locName(state,l.loc))}</span>`:''}`).join('<br>')),{h:money(x.total)}]);
+  const form=!canDirect(u)?'':isAll()?`<h2 style="margin-bottom:10px">New direct order</h2>`+allGate('create a direct order'):`<div class="panel"><h2>New direct order</h2>
+    <p class="muted small" style="margin:4px 0 12px">For orders handed over directly, without the logistics team. Stock is deducted and the sale is recorded as soon as you save. Direct orders are not counted as requests.</p>
+    <form data-form="directOrder" id="soForm" class="stack" novalidate>
+      <div class="fgrid">
+        <label>Customer ID <button type="button" class="link" data-act="soNewOpen" style="font-size:13px;align-self:flex-start">+ New customer</button><input name="soCode" data-inp="soCust" list="soCodes" placeholder="Type the customer ID" autocomplete="off" spellcheck="false"><datalist id="soCodes">${P(state.customers).map(c=>`<option value="${esc(c.code||'')}">${esc(c.name)}</option>`).join('')}</datalist></label>
+        <label>Customer<select name="customerId" data-chg="soCustSel">${opts(P(state.customers),'',custLabel,'Choose customer')}</select></label>
+        <label>Governorate<select name="govId">${opts(govsSorted(),'',null,'Choose governorate')}</select></label>
+        <label>Order date<input type="date" name="date" value="${today()}"></label>
+      </div>
+      <div id="soCard"></div>
+      <div id="soNew" class="panel hide" style="background:var(--sunk);margin:0">
+        <div class="spread" style="margin-bottom:8px"><strong>New customer</strong><button type="button" class="btn plain sm" data-act="soNewCancel">Cancel new customer</button></div>
+        <p class="muted small" style="margin-bottom:10px">Saved to the customer list of this project together with the order. The Customer ID and Governorate are taken from the fields above.</p>
+        <div class="fgrid"><label>Customer name<input name="nc_name"></label><label>Address<input name="nc_address"></label><label>Phone<input name="nc_phone"></label></div>
+      </div>
+      <div id="soLines" class="stack">${soLine()}</div>
+      <template id="soTpl">${soLine()}</template>
+      <div class="spread"><button type="button" class="btn ghost sm" data-act="soAdd">Add product line</button><strong id="soTotal">Total 0.00</strong></div>
+      <label>Note<input name="note" placeholder="Optional"></label>
+      <p class="err form-err hide" role="alert"></p>
+      <div><button class="btn" type="submit">Save direct order</button></div>
+    </form></div>`;
+  return ph('sales','Completed deliveries are recorded here automatically. You can also enter direct orders that do not go through the logistics team.')+`
+  ${form}
+  <div class="stats"><div class="stat"><b>${S.length}</b><span>Sales entries</span></div><div class="stat"><b>${S.filter(x=>x.direct).length}</b><span>Direct orders</span></div><div class="stat"><b>${money(total)}</b><span>Total value</span></div><div class="stat"><b>${money(S.filter(x=>x.date===today()).reduce((a,x)=>a+x.total,0))}</b><span>Today</span></div></div>
+  ${table([{l:'Sale'},{l:'Reference'},{l:'Channel'},{l:'Date'},{l:'Customer'},{l:'Agent'},{l:'Lines'},{l:'Total',num:1}],rows,'No sales yet.')}`;
 }
 
 function invData(){
@@ -1378,6 +1413,12 @@ function reportData(){
 
 function traceView(ref){
   const r=state.requests.find(x=>x.ref===ref);
+  const ds=!r&&state.sales.find(x=>x.ref===ref&&x.direct);
+  if(ds){const mv=state.movements.filter(m=>m.ref===ref),lg=state.log.filter(l=>l.ref===ref);
+    return `<div class="panel"><div class="spread" style="margin-bottom:12px"><div class="row">${refTag(ref,true)}<span class="ty">Direct order</span>${st('Recorded')}</div><button class="btn plain sm" data-act="clearTrace">Close trace</button></div>
+      <div class="kv" style="margin-bottom:16px"><div><span>Customer</span>${esc(custLabel(find(state.customers,ds.customerId)))}${ds.govId?', '+esc(govName(ds.govId)):''}</div><div><span>Sale</span><span class="code">${esc(ds.id)}</span>, ${money(ds.total)}, ${fmtD(ds.date)}</div>
+      <div><span>Stock movements</span>${mv.map(m=>`${m.qty} × ${esc(nm(state.products,m.productId))} (batch ${esc(batchNo(state,m.batchId))}): ${esc(locName(state,m.from))} to customer`).join('<br>')}</div><div><span>Logistics</span>Not used, handed over directly</div></div>
+      <h3 style="margin-bottom:10px">Audit trail</h3><ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol></div>`}
   if(!r)return `<div class="panel"><div class="spread"><h2>Trace</h2><button class="btn plain sm" data-act="clearTrace">Close</button></div><p class="err" style="margin-top:8px">No order found with reference ${esc(ref)}. Check the number and try again.</p></div>`;
   const t=taskOf(state,ref), rt=t&&t.routeId?find(state.routes,t.routeId):null, sale=state.sales.find(x=>x.ref===ref), mv=state.movements.filter(m=>m.ref===ref), lg=state.log.filter(l=>l.ref===ref);
   return `<div class="panel">
@@ -1662,6 +1703,36 @@ const forms={
     closeModal();
     await act(s=>applyDelete(s,kind,id),name+' deleted.');
   })()},
+  directOrder(fd,f){
+    const e=f.querySelector('.form-err');const show=m=>{e.textContent=m;e.classList.remove('hide');e.scrollIntoView({block:'nearest'})};e.classList.add('hide');
+    const isNew=!document.getElementById('soNew').classList.contains('hide');
+    let custId=fd.get('customerId');let nc=null;
+    if(isNew){const code=String(fd.get('soCode')||'').trim().toUpperCase();const name=String(fd.get('nc_name')||'').trim();
+      if(!code)return show('Enter the Customer ID for the new customer.');if(!name)return show('Enter the new customer\'s name.');if(!fd.get('govId'))return show('Choose the governorate for the new customer.');
+      if(custByCode(code))return show('Customer ID '+code+' already exists. Pick that customer instead.');
+      nc={id:rid('cus'),projectId:ui.project,code,name,govId:fd.get('govId'),address:String(fd.get('nc_address')||'').trim(),phone:String(fd.get('nc_phone')||'').trim()};custId=nc.id}
+    if(!custId)return show('Choose the customer (type the customer ID or pick from the list), or add a new customer.');
+    const lines=[];let bad='';
+    f.querySelectorAll('.soline').forEach((l,i)=>{const g=n=>l.querySelector(`[name=${n}]`).value;const pid=g('so_product');if(!pid&&!g('so_qty'))return;
+      if(!pid)bad=bad||'Line '+(i+1)+': choose a product.';else if(!g('so_batch'))bad=bad||'Line '+(i+1)+': choose a batch.';else if(!g('so_loc'))bad=bad||'Line '+(i+1)+': choose where to deduct the stock from.';
+      const q=Math.floor(Number(g('so_qty')));if(pid&&!(q>0))bad=bad||'Line '+(i+1)+': enter a quantity above zero.';
+      const pr=Number(g('so_price'));if(pid&&!(pr>=0))bad=bad||'Line '+(i+1)+': enter a valid price.';
+      if(pid)lines.push({productId:pid,batchId:g('so_batch'),loc:g('so_loc'),qty:q,price:pr||0})});
+    if(bad)return show(bad);if(!lines.length)return show('Add at least one product.');
+    act(st=>{
+      if(nc){if(st.customers.some(x=>(x.projectId===ALL||x.projectId===nc.projectId)&&(x.code||'').toUpperCase()===nc.code))throw new Error('Customer ID '+nc.code+' already exists.');st.customers.push(nc);log(st,'Customer added',null,nc.code+' '+nc.name+', from a direct order','',null,nc.projectId)}
+      const need={};lines.forEach(l=>{const k=l.loc+'|'+l.productId+'|'+l.batchId;need[k]=(need[k]||0)+l.qty});
+      for(const k in need){const [loc,pid,bid]=k.split('|');const have=qty(st,loc,pid,bid);if(have<need[k])throw new Error(locName(st,loc)+' has '+have+' of '+nm(st.products,pid)+', batch '+batchNo(st,bid)+'. This order needs '+need[k]+'.')}
+      st.seq.so=(st.seq.so||0)+1;const ref='SO-'+new Date().getFullYear()+'-'+pad(st.seq.so,4);
+      const projectId=(find(st.products,lines[0].productId)||{}).projectId||ui.project;
+      lines.forEach(l=>move(st,{ref,type:'Direct sale',projectId:(find(st.products,l.productId)||{}).projectId||projectId,productId:l.productId,batchId:l.batchId,qty:l.qty,from:l.loc,to:'C:'+custId}));
+      const sl=lines.map(l=>({...l,amount:l.qty*l.price}));
+      const sale={id:'SAL-'+pad(++st.seq.sale,4),ref,direct:true,projectId,customerId:custId,govId:fd.get('govId')||'',agentId:'',date:fd.get('date')||today(),at:now(),lines:sl,total:sl.reduce((a,l)=>a+l.amount,0),note:String(fd.get('note')||'').trim(),recordedBy:cur()};
+      st.sales.push(sale);
+      log(st,'Direct order',ref,custLabel(find(st.customers,custId))+': '+lines.map(l=>l.qty+' × '+nm(st.products,l.productId)+' batch '+batchNo(st,l.batchId)+' from '+locName(st,l.loc)).join('; ')+', total '+money(sale.total),'Recorded',null,projectId);
+      toastMsg='Direct order '+ref+' saved'+(nc?' and customer '+nc.code+' added':'')+'. Stock deducted and sale recorded.';
+    },null);if(toastMsg){toast(toastMsg);toastMsg=''}
+  },
   traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
 };
 let toastMsg='';
@@ -1746,6 +1817,10 @@ const acts={
   async backupData(){await saveFile('daf-logistics-backup-'+today()+'.json',JSON.stringify(state,null,1));act(s=>log(s,'Backup downloaded',null,'','',undefined,null))},
   askDelete(el){openDeleteModal(el.dataset.kind,el.dataset.id)},
   closeModal(el,ev){closeModal()},
+  soNewOpen(){soNewToggle(true)},
+  soNewCancel(){soNewToggle(false);const f=document.getElementById('soForm');const c=custByCode(f.elements.soCode.value);if(c){f.elements.customerId.value=c.id;document.getElementById('soCard').innerHTML=custCard(c)}},
+  soAdd(){document.getElementById('soLines').appendChild(document.getElementById('soTpl').content.cloneNode(true))},
+  soRm(el){const box=document.getElementById('soLines');if(box.children.length>1)el.closest('.soline').remove();else{el.closest('.soline').querySelectorAll('input').forEach(i=>i.value='');const ps=el.closest('.soline').querySelector('[name=so_product]');ps.value='';changes.soProduct(ps)}soTotal()},
   clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
@@ -1786,6 +1861,18 @@ const changes={
   routeGroup(el){filterRouteTasks()},
   routeGov(el){filterRouteTasks()},
   sc(el){ui.sc=ui.sc||{};ui.sc[el.dataset.k]=el.value;ui.sc.view='';render()},
+  soProduct(el){const line=el.closest('.soline');const b=line.querySelector('[name=so_batch]'),l=line.querySelector('[name=so_loc]'),pr=line.querySelector('[name=so_price]');
+    const pid=el.value;const bs=pid?batchesFor(state,pid).filter(x=>soLocsFor(pid,x.id).length):[];
+    b.innerHTML=pid?(bs.length?'<option value="">Choose batch</option>'+bs.map(x=>`<option value="${x.id}">${esc(x.batchNo)}, ${soLocsFor(pid,x.id).reduce((a,y)=>a+y[3],0)} in stock${x.expiry?', exp '+esc(fmtD(x.expiry)):''}</option>`).join(''):'<option value="">No batch with stock</option>'):'<option value="">Choose product first</option>';
+    b.disabled=!bs.length;if(bs.length===1)b.value=bs[0].id;
+    pr.value=pid?((find(state.products,pid)||{}).price||0):'';
+    changes.soBatch(b)},
+  soBatch(el){const line=el.closest('.soline');const pid=line.querySelector('[name=so_product]').value,l=line.querySelector('[name=so_loc]');
+    const ls=el.value?soLocsFor(pid,el.value):[];
+    l.innerHTML=el.value?'<option value="">Choose warehouse or sales team</option>'+[['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const L=ls.filter(x=>x[2]===k);return L.length?`<optgroup label="${lb}">${L.map(x=>`<option value="${x[0]}">${esc(x[1])}, ${x[3]} in stock</option>`).join('')}</optgroup>`:''}).join(''):'<option value="">Choose batch first</option>';
+    l.disabled=!ls.length;if(ls.length===1)l.value=ls[0][0];soTotal()},
+  soLoc(){soTotal()},
+  soCustSel(el){if(el.value)soNewToggle(false);const c=find(state.customers,el.value);el.form.elements.soCode.value=c?(c.code||''):'';if(c&&c.govId)el.form.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
@@ -1821,7 +1908,10 @@ function applyCustomer(f,c,typed){
   if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;card.innerHTML=custCard(c)}
   else{f.elements.customerId.value='';card.innerHTML=typed?`<p class="err">No customer with ID ${esc(typed)} in this project.</p>`:''}
 }
-document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
+function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
+function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
+  if(el.dataset&&el.dataset.inp==='soCust')return;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(!el)return;const h=changes[el.dataset.chg];if(h)h(el)});
 document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
 new MutationObserver(()=>{const s=document.querySelector('select[data-chg="routeAgent"]');if(s&&!s.dataset.init){s.dataset.init='1';filterRouteTasks()}}).observe(document.getElementById('app'),{childList:true,subtree:true});
