@@ -1090,7 +1090,11 @@ function pgRequests(u){
     <p class="note" id="typeHelp">${esc(TYPES.Delivery.help)}</p>
     <datalist id="pcodes">${prods.map(p=>`<option value="${esc(p.code||'')}">${esc(p.sku+' '+p.name)}</option>`).join('')}</datalist>
     <div id="lines" class="stack">${productLine(prods,true)}</div>
-    <div><button type="button" class="btn ghost sm" data-act="addLine">Add product line</button> <span class="muted small w-doc hide">Products are optional for documentation.</span></div>
+    <div class="row"><button type="button" class="btn ghost sm" data-act="addLine">Add product line</button>
+      <label class="btn plain sm" style="flex-direction:row;color:var(--ink);font-size:14px;cursor:pointer">Import products from Excel<input type="file" accept=".xlsx,.xls,.csv" data-chg="reqImport" style="display:none"></label>
+      <button type="button" class="link small" data-act="reqImpTemplate">Download template</button>
+      <span class="muted small w-doc hide">Products are optional for documentation.</span></div>
+    <div id="reqImpMsg"></div>
     <label>Notes<textarea name="notes" placeholder="Optional instructions for the team"></textarea></label>
     <div><button class="btn" type="submit">Create request</button></div>
   </form>
@@ -1905,6 +1909,11 @@ const acts={
     await act(s=>{const y=find(s.users,x.id);y.fbUid=uid;log(s,'Login set up',null,y.username,'Active',null,null)},'Login ready. '+x.username+' can sign in now.')},
   fillDemo(el){const f=document.querySelector('form[data-form="login"]');f.elements.username.value=el.dataset.u;f.elements.password.value=el.dataset.p;f.querySelector('button[type=submit]').focus()},
   refresh(){ui.pending=false;render()},
+  async reqImpTemplate(){
+    const rows=[['Product ID','Quantity','Batch (optional)'],['P0001',10,''],['P0002',5,'']];
+    if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:10},{wch:18}];XLSX.utils.book_append_sheet(wb,ws,'Products');await saveFile('daf-request-products-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
+    else await saveFile('daf-request-products-template.csv','\ufeff'+rows.map(r=>r.join(',')).join('\n'));
+  },
   addLine(){const tpl=document.getElementById('lineTpl');document.getElementById('lines').appendChild(tpl.content.cloneNode(true))},
   addPbLine(){document.getElementById('pbLines').appendChild(document.getElementById('pbTpl').content.cloneNode(true))},
   rmRow(el){const box=document.getElementById(el.dataset.box);const rows=box.children;if(rows.length>1)el.parentElement.remove();else el.parentElement.querySelectorAll('input').forEach(i=>i.value='')},
@@ -2051,6 +2060,28 @@ const changes={
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});const res=impParse(rows);ui.imp={file:file.name,...res};
       if(res.rows&&!res.rows.length)ui.imp={file:file.name,error:'The file has no product lines under the header row.'}}catch(e){ui.imp={file:file.name,error:'Could not read this file: '+(e.message||e)}}
       el.value='';render()};rd.readAsArrayBuffer(file)},
+  reqImport(el){const file=el.files&&el.files[0];if(!file)return;
+    if(!window.XLSX){toast('The Excel reader did not load. Check your internet connection and reload the page.','bad');el.value='';return}
+    const f=document.getElementById('reqForm');const msg=document.getElementById('reqImpMsg');
+    const rd=new FileReader();rd.onload=()=>{el.value='';let rows;
+      try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}catch(e){msg.innerHTML=`<p class="err">Could not read this file: ${esc(e.message||e)}</p>`;return}
+      const hdr=(rows[0]||[]).map(h=>String(h||'').trim().toLowerCase());
+      const ci=hdr.findIndex(h=>['product id','productid','id','product code','code','item id'].includes(h)),qi=hdr.findIndex(h=>['quantity','qty','qnty','amount'].includes(h)),bi=hdr.findIndex(h=>h.startsWith('batch')||h==='lot');
+      if(ci<0||qi<0){msg.innerHTML=`<p class="err">The file needs a <strong>Product ID</strong> column and a <strong>Quantity</strong> column. Download the template to see the format.</p>`;return}
+      const type=f.elements.type.value;const added=[],bad=[];
+      rows.slice(1).forEach((r,i)=>{if(!r||r.every(c=>String(c??'').trim()===''))return;const code=String(r[ci]??'').trim();const q=Math.floor(Number(String(r[qi]??'').replace(/,/g,'')));
+        const p=prodByCode(code);if(!p){bad.push(`Line ${i+2}: product ID "${esc(code||'(empty)')}" not found`);return}
+        if(!(q>0)){bad.push(`Line ${i+2}: quantity for ${esc(code)} is not a number above zero`);return}
+        let line=[...document.querySelectorAll('#lines .line')].find(l=>!l.querySelector('select[name=item_product]').value&&!l.querySelector('input[name=item_qty]').value);
+        if(!line){document.getElementById('lines').appendChild(document.getElementById('lineTpl').content.cloneNode(true));const all=document.querySelectorAll('#lines .line');line=all[all.length-1]}
+        const sel=line.querySelector('select[name=item_product]');sel.value=p.id;changes.lineProduct(sel);
+        const bt=line.querySelector('input[name=item_batch]');const want=bi>=0?String(r[bi]??'').trim():'';
+        if(want){const b=findBatch(state,p.id,want);if(b){bt.value=b.batchNo;batchHint(line,type)}else bad.push(`Line ${i+2}: batch "${esc(want)}" not found for ${esc(code)}, choose it from the list`)}
+        line.querySelector('input[name=item_qty]').value=q;added.push(code)});
+      const need=[...document.querySelectorAll('#lines .line')].filter(l=>l.querySelector('select[name=item_product]').value&&!l.querySelector('input[name=item_batch]').value.trim()).length;
+      msg.innerHTML=`<div class="note" style="margin-top:4px">${added.length?`<strong>${added.length} product line${added.length===1?'':'s'} added from ${esc(file.name)}.</strong> `:'<strong>No lines added.</strong> '}${need?`Choose the <strong>batch</strong> on ${need} line${need===1?'':'s'} (lines with only one batch were filled in for you).`:added.length?'All batches are filled in.':''}${bad.length?`<div class="err" style="margin-top:6px">${bad.join('<br>')}</div>`:''}</div>`;
+      const first=[...document.querySelectorAll('#lines .line')].find(l=>l.querySelector('select[name=item_product]').value&&!l.querySelector('input[name=item_batch]').value.trim());if(first)first.querySelector('input[name=item_batch]').focus();
+    };rd.readAsArrayBuffer(file)},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
