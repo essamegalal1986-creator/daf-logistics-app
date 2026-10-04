@@ -175,7 +175,7 @@ button.ref:hover{filter:brightness(.95)}
 .modal{background:var(--surface);color:var(--ink);border-radius:12px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:4px solid var(--bad)}
 .modal h2{margin-bottom:8px}
 .modal ul{margin:8px 0 12px 18px;padding:0;font-size:14px}
-.soline{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 90px 110px auto;gap:8px;align-items:start}
+.soline{display:grid;grid-template-columns:120px minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.3fr) 90px 110px auto;gap:8px;align-items:start}
 @media (max-width:760px){.soline{grid-template-columns:1fr 1fr}}
 .pick table{font-size:14px}
 .pick tfoot td{border-top:1px solid var(--line);background:var(--sunk)}
@@ -1293,7 +1293,7 @@ function pgMyTasks(u){
 }
 
 function soLine(){
-  return `<div class="soline"><label>Product<select name="so_product" data-chg="soProduct"><option value="">Choose product</option>${PS().map(p=>`<option value="${p.id}">${esc(prodLabel(p))}</option>`).join('')}</select></label>
+  return `<div class="soline"><label>Product ID<input name="so_pcode" data-inp="sopcode" list="sopcodes" placeholder="Type ID" autocomplete="off" spellcheck="false"><span class="sohint small muted" aria-live="polite"></span></label><label>Product<select name="so_product" data-chg="soProduct"><option value="">Choose product</option>${PS().map(p=>`<option value="${p.id}">${esc(prodLabel(p))}</option>`).join('')}</select></label>
     <label>Batch<select name="so_batch" data-chg="soBatch" disabled><option value="">Choose product first</option></select></label>
     <label>Deduct from<select name="so_loc" data-chg="soLoc" disabled><option value="">Choose batch first</option></select></label>
     <label>Quantity<input name="so_qty" type="number" min="1" step="1" data-inp="soCalc"></label>
@@ -1306,7 +1306,7 @@ function pgSales(u){
   if(!ui.project)return ph('sales')+needProject();
   const S=P(state.sales).slice().reverse();
   const total=S.reduce((a,x)=>a+x.total,0);
-  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)+projTag(x.projectId)),H(x.direct?'<span class="ptag" style="margin:0">Direct</span>':'<span class="muted small">Delivery</span>'),fmtD(x.date),custLabel(find(state.customers,x.customerId)),x.direct?'':nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}${l.loc?` <span class="muted small">from ${esc(locName(state,l.loc))}</span>`:''}`).join('<br>')),{h:money(x.total)}]);
+  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)+projTag(x.projectId)),H(x.direct?'<span class="ptag" style="margin:0">Direct</span>':'<span class="muted small">Delivery</span>'),fmtD(x.date),custLabel(find(state.customers,x.customerId)),x.direct?'':nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${(find(state.products,l.productId)||{}).code?'<span class="code">'+esc(find(state.products,l.productId).code)+'</span> ':''}${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}${l.loc?` <span class="muted small">from ${esc(locName(state,l.loc))}</span>`:''}`).join('<br>')),{h:money(x.total)}]);
   const form=!canDirect(u)?'':isAll()?`<h2 style="margin-bottom:10px">New direct order</h2>`+allGate('create a direct order'):`<div class="panel"><h2>New direct order</h2>
     <p class="muted small" style="margin:4px 0 12px">For orders handed over directly, without the logistics team. Stock is deducted and the sale is recorded as soon as you save. Direct orders are not counted as requests.</p>
     <form data-form="directOrder" id="soForm" class="stack" novalidate>
@@ -1322,6 +1322,7 @@ function pgSales(u){
         <p class="muted small" style="margin-bottom:10px">Saved to the customer list of this project together with the order. The Customer ID and Governorate are taken from the fields above.</p>
         <div class="fgrid"><label>Customer name<input name="nc_name"></label><label>Address<input name="nc_address"></label><label>Phone<input name="nc_phone"></label></div>
       </div>
+      <datalist id="sopcodes">${PS().map(p=>`<option value="${esc(p.code||'')}">${esc(p.name)}</option>`).join('')}</datalist>
       <div id="soLines" class="stack">${soLine()}</div>
       <template id="soTpl">${soLine()}</template>
       <div class="spread"><button type="button" class="btn ghost sm" data-act="soAdd">Add product line</button><strong id="soTotal">Total 0.00</strong></div>
@@ -2149,7 +2150,7 @@ const changes={
   routeGroup(el){filterRouteTasks()},
   routeGov(el){filterRouteTasks()},
   sc(el){ui.sc=ui.sc||{};ui.sc[el.dataset.k]=el.value;ui.sc.view='';render()},
-  soProduct(el){const line=el.closest('.soline');const b=line.querySelector('[name=so_batch]'),l=line.querySelector('[name=so_loc]'),pr=line.querySelector('[name=so_price]');
+  soProduct(el){const line=el.closest('.soline');{const pc=line.querySelector('[name=so_pcode]'),h=line.querySelector('.sohint');const p=find(state.products,el.value);if(pc&&!el.dataset.fromCode){pc.value=p?(p.code||''):''}if(h){h.className='sohint small';h.style.color=p?'var(--ok)':'';h.textContent=p?p.sku+', '+p.name:''}}const b=line.querySelector('[name=so_batch]'),l=line.querySelector('[name=so_loc]'),pr=line.querySelector('[name=so_price]');
     const pid=el.value;const bs=pid?batchesFor(state,pid).filter(x=>soLocsFor(pid,x.id).length):[];
     b.innerHTML=pid?(bs.length?'<option value="">Choose batch</option>'+bs.map(x=>`<option value="${x.id}">${esc(x.batchNo)}, ${soLocsFor(pid,x.id).reduce((a,y)=>a+y[3],0)} in stock${x.expiry?', exp '+esc(fmtD(x.expiry)):''}</option>`).join(''):'<option value="">No batch with stock</option>'):'<option value="">Choose product first</option>';
     b.disabled=!bs.length;if(bs.length===1)b.value=bs[0].id;
@@ -2237,7 +2238,9 @@ function fillReqEdit(){
 function reqNewToggle(on){const n=document.getElementById('reqNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('reqForm');if(on){f.elements.customerId.value='';document.getElementById('custCard').innerHTML='';(f.elements.custCode.value.trim()?f.elements.rnc_name:f.elements.custCode).focus()}}
 function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
 function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
-document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='opcode'){const f=el.form,sel=f.elements.product,h=f.querySelector('.ophint');const p=prodByCode(el.value);
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='sopcode'){const line=el.closest('.soline');const sel=line.querySelector('[name=so_product]');const p=prodByCode(el.value);
+    sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.soProduct(sel);delete sel.dataset.fromCode;
+    if(!p){const h=line.querySelector('.sohint');h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='opcode'){const f=el.form,sel=f.elements.product,h=f.querySelector('.ophint');const p=prodByCode(el.value);
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.lineProduct(sel);delete sel.dataset.fromCode;
     h.className='ophint small';if(p){h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}else{h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='pcode'){const line=el.closest('.line');const sel=line.querySelector('select[name=item_product]');const h=line.querySelector('.phint');const p=prodByCode(el.value);
     if(p){if(sel.value!==p.id){sel.value=p.id;const keep=el.value;changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}
