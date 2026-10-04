@@ -510,7 +510,8 @@ function checkStock(s,r){
 }
 function itemsText(s,r){return r.items.map(it=>`${it.qty} × ${nm(s.products,it.productId,'?')}${it.batchId?' (batch '+batchNo(s,it.batchId)+')':''}`).join(', ')}
 function partyText(s,r){return partyBase(s,r)+(r.govId?', '+nm(s.govs||[],r.govId):'')}
-function prodLabel(p){return p?(p.code?p.code+' | ':'')+p.sku+' '+p.name:''}
+function PS(){return P(state.products).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base',numeric:true}))}
+function prodLabel(p){return p?p.name+' ('+[p.code,p.sku].filter(Boolean).join(' | ')+')':''}
 function prodByCode(code,list){const k=String(code||'').trim().toUpperCase();return k?(list||P(state.products)).find(p=>(p.code||'').toUpperCase()===k):null}
 function custLabel(c){return c?(c.code?c.code+' ':'')+c.name:''}
 function custByCode(code){const k=String(code||'').trim().toUpperCase();return k?P(state.customers).find(c=>(c.code||'').toUpperCase()===k):null}
@@ -974,7 +975,7 @@ function pgBatches(){
   return `<h2 style="margin:26px 0 6px">Batches in ${esc(nm(state.projects,ui.project))}</h2>
   <p class="muted" style="margin-bottom:12px">Each product can hold several batches. Requests choose a batch per product, and stock is tracked per batch.</p>
   <div class="panel"><form data-form="batch" class="fgrid">
-    <label>Product<select name="productId" required>${opts(P(state.products),'',p=>p.sku+' '+p.name,'Choose product')}</select></label>
+    <label>Product<select name="productId" required>${opts(PS(),'',prodLabel,'Choose product')}</select></label>
     <label>Batch number<input name="batchNo" required placeholder="e.g. SW-2610-A"></label>
     <label>Manufactured<input name="mfg" type="date"></label>
     <label>Expiry<input name="expiry" type="date"></label>
@@ -1030,7 +1031,8 @@ function pgSetup(u){
       ${!P(state.warehouses).length&&!P(state.salesTeam).length?`<p class="err" style="margin-bottom:10px">This project has no warehouses or sales team yet. Add one on the Warehouses or Sales team tab first.</p>`:''}
       <p class="muted small" style="margin-bottom:10px">Opening stock sets the starting balance of a warehouse or a sales team member before any orders move.</p><form data-form="opening" class="fgrid">
       <label>Location<select name="wh" required><option value="">Choose warehouse or sales team</option>${P(state.warehouses).length?`<optgroup label="Warehouses">${P(state.warehouses).map(w=>`<option value="W:${w.id}">${esc(w.name)}</option>`).join('')}</optgroup>`:''}${P(state.salesTeam).length?`<optgroup label="Sales team">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`:''}</select></label>
-      <label>Product<select name="product" required data-chg="lineProduct">${opts(P(state.products),'',p=>p.sku+' '+p.name,'Choose product')}</select></label>
+      <label>Product ID<input name="op_code" data-inp="opcode" list="opcodes" placeholder="Type ID" autocomplete="off" spellcheck="false"><span class="ophint small muted" aria-live="polite"></span><datalist id="opcodes">${PS().map(p=>`<option value="${esc(p.code||'')}">${esc(p.name)}</option>`).join('')}</datalist></label>
+      <label>Product<select name="product" required data-chg="lineProduct">${opts(PS(),'',prodLabel,'Choose product')}</select></label>
       <label>Batch<select name="batch" required data-kind="Received">${batchOptions(state,'','Received')}</select></label>
       <label>Quantity<input name="qty" type="number" min="1" step="1" required></label>
       <button class="btn" type="submit">Add opening stock</button></form></div>`+
@@ -1054,7 +1056,7 @@ function productLine(prods,first){
 
 function pgRequests(u){
   if(!ui.project)return ph('requests')+needProject();
-  const prods=P(state.products);
+  const prods=PS();
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
@@ -1227,7 +1229,7 @@ function pgMyTasks(u){
 }
 
 function soLine(){
-  return `<div class="soline"><label>Product<select name="so_product" data-chg="soProduct"><option value="">Choose product</option>${P(state.products).map(p=>`<option value="${p.id}">${esc(prodLabel(p))}</option>`).join('')}</select></label>
+  return `<div class="soline"><label>Product<select name="so_product" data-chg="soProduct"><option value="">Choose product</option>${PS().map(p=>`<option value="${p.id}">${esc(prodLabel(p))}</option>`).join('')}</select></label>
     <label>Batch<select name="so_batch" data-chg="soBatch" disabled><option value="">Choose product first</option></select></label>
     <label>Deduct from<select name="so_loc" data-chg="soLoc" disabled><option value="">Choose batch first</option></select></label>
     <label>Quantity<input name="so_qty" type="number" min="1" step="1" data-inp="soCalc"></label>
@@ -1292,7 +1294,7 @@ function pgInventory(u){
   return ph('inventory','Balances update automatically when a task is completed. Every movement carries the order reference.')+`
   <div class="panel">
     <div class="fgrid">
-      <label>Product<select data-chg="inv" data-k="product"><option value="">All products</option>${P(state.products).map(p=>`<option value="${p.id}" ${f.product===p.id?'selected':''}>${esc(p.sku)} ${esc(p.name)}</option>`).join('')}</select></label>
+      <label>Product<select data-chg="inv" data-k="product"><option value="">All products</option>${PS().map(p=>`<option value="${p.id}" ${f.product===p.id?'selected':''}>${esc(prodLabel(p))}</option>`).join('')}</select></label>
       <label>Location<select data-chg="inv" data-k="loc"><option value="">All locations</option>${allLocs.map(l=>`<option value="${l[0]}" ${f.loc===l[0]?'selected':''}>${esc(l[1])}</option>`).join('')}</select></label>
       <label>Movement type<select data-chg="inv" data-k="type"><option value="">All types</option>${types.map(t=>`<option ${f.type===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>
       <label>Movements from<input type="date" data-chg="inv" data-k="from" value="${esc(f.from)}"></label>
@@ -1435,7 +1437,7 @@ function pgStockCheck(u){
   ${isAll()?allGate('enter a new count'):`<div class="panel"><h2>New count</h2>
     <div class="fgrid" style="margin:10px 0 14px">
       <label>Location counted<select data-chg="sc" data-k="loc"><option value="">Choose warehouse or sales team</option>${[['w','Warehouses'],['s','Sales team']].map(([k,l])=>{const L=locs.filter(x=>x[2]===k);return L.length?`<optgroup label="${l}">${L.map(x=>`<option value="${x[0]}" ${sc.loc===x[0]?'selected':''}>${esc(x[1])}</option>`).join('')}</optgroup>`:''}).join('')}</select></label>
-      <label>Product<select data-chg="sc" data-k="product"><option value="">All products</option>${P(state.products).map(p=>`<option value="${p.id}" ${sc.product===p.id?'selected':''}>${esc(p.sku)} ${esc(p.name)}</option>`).join('')}</select></label>
+      <label>Product<select data-chg="sc" data-k="product"><option value="">All products</option>${PS().map(p=>`<option value="${p.id}" ${sc.product===p.id?'selected':''}>${esc(prodLabel(p))}</option>`).join('')}</select></label>
     </div>
     ${sc.loc?form:'<p class="muted">Choose the location you counted to start.</p>'}
   </div>`}
@@ -2017,7 +2019,7 @@ const changes={
     f.querySelectorAll('#lines .line').forEach(l=>setupBatchField(l,el.value));
   },
   reqFilter(el){ui.reqFilter=el.value;render()},
-  lineProduct(el){const line=el.closest('.line');if(line){const pc=line.querySelector('input[name=item_pcode]');if(pc){const p=find(state.products,el.value);pc.value=p?(p.code||''):'';const h=line.querySelector('.phint');h.className='phint small muted';h.textContent=p?p.sku+', '+p.name:''}const inp=line.querySelector('input[name=item_batch]');inp.value='';setupBatchField(line,el.form.elements.type.value);if(!inp.disabled)inp.focus();return}const b=el.form.querySelector('select[name=batch]');if(b)b.innerHTML=batchOptions(state,el.value,'Received')},
+  lineProduct(el){const line=el.closest('.line');if(line){const pc=line.querySelector('input[name=item_pcode]');if(pc){const p=find(state.products,el.value);pc.value=p?(p.code||''):'';const h=line.querySelector('.phint');h.className='phint small muted';h.textContent=p?p.sku+', '+p.name:''}const inp=line.querySelector('input[name=item_batch]');inp.value='';setupBatchField(line,el.form.elements.type.value);if(!inp.disabled)inp.focus();return}const b=el.form.querySelector('select[name=batch]');if(b)b.innerHTML=batchOptions(state,el.value,'Received');const oc=el.form.querySelector('input[name=op_code]');if(oc&&!el.dataset.fromCode){const p=find(state.products,el.value);oc.value=p?(p.code||''):'';const h=el.form.querySelector('.ophint');h.className='ophint small muted';h.style.color='';h.textContent=p?p.sku+', '+p.name:''}},
   routeAgent(el){filterRouteTasks()},
   routeGroup(el){filterRouteTasks()},
   routeGov(el){filterRouteTasks()},
@@ -2078,7 +2080,9 @@ function applyCustomer(f,c,typed){
 function reqNewToggle(on){const n=document.getElementById('reqNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('reqForm');if(on){f.elements.customerId.value='';document.getElementById('custCard').innerHTML='';(f.elements.custCode.value.trim()?f.elements.rnc_name:f.elements.custCode).focus()}}
 function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
 function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
-document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='pcode'){const line=el.closest('.line');const sel=line.querySelector('select[name=item_product]');const h=line.querySelector('.phint');const p=prodByCode(el.value);
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='opcode'){const f=el.form,sel=f.elements.product,h=f.querySelector('.ophint');const p=prodByCode(el.value);
+    sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.lineProduct(sel);delete sel.dataset.fromCode;
+    h.className='ophint small';if(p){h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}else{h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='pcode'){const line=el.closest('.line');const sel=line.querySelector('select[name=item_product]');const h=line.querySelector('.phint');const p=prodByCode(el.value);
     if(p){if(sel.value!==p.id){sel.value=p.id;const keep=el.value;changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}
     else{const keep=el.value;if(sel.value){sel.value='';changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color=keep.trim()?'var(--bad)':'';h.textContent=keep.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
   if(el.dataset&&el.dataset.inp==='soCust')return;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
