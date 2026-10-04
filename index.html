@@ -878,6 +878,69 @@ function pbLine(first){
     <label>Expiry<input name="pb_exp" type="date"></label>
     <button type="button" class="btn plain sm" data-act="rmRow" data-box="pbLines" aria-label="Remove batch" style="margin-bottom:4px">Remove</button></div>`;
 }
+/* ---------- Product import from Excel ---------- */
+const IMP_COLS=[['code','Product ID',['product id','productid','id','product code','item id']],['sku','SKU',['sku','item code']],['name','Product name',['product name','name','product','description']],['unit','Unit',['unit','uom']],['price','Unit price',['unit price','price']],['batchNo','Batch number',['batch number','batch','batch no','lot','lot number']],['mfg','Manufactured',['manufactured','manufacturing date','mfg','production date']],['expiry','Expiry',['expiry','expiry date','exp','expiration','expiration date']]];
+function impDate(v){
+  if(v===undefined||v===null||v==='')return '';
+  if(Object.prototype.toString.call(v)==='[object Date]')return isNaN(v)?null:v.getFullYear()+'-'+pad(v.getMonth()+1,2)+'-'+pad(v.getDate(),2);
+  const ok=(y,m,d)=>{const x=new Date(y,m-1,d);return x.getFullYear()===y&&x.getMonth()===m-1&&x.getDate()===d?y+'-'+pad(m,2)+'-'+pad(d,2):null};
+  if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1,2)+'-'+pad(d.getUTCDate(),2)}
+  const t=String(v).trim();let m=t.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);if(m)return ok(+m[1],+m[2],+m[3]);
+  m=t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/);if(m)return ok(+m[3],+m[2],+m[1]);
+  return null;
+}
+function impParse(rows){
+  const hdr=(rows[0]||[]).map(h=>String(h||'').trim().toLowerCase());
+  const idx={};IMP_COLS.forEach(([k,,al])=>{idx[k]=hdr.findIndex(h=>al.includes(h))});
+  const missing=IMP_COLS.filter(([k])=>['code','sku','name','batchNo'].includes(k)&&idx[k]<0).map(c=>c[1]);
+  if(missing.length)return {error:'Missing column'+(missing.length>1?'s':'')+': '+missing.join(', ')+'. Download the template to see the expected columns.'};
+  const pid=ui.project;const out=[];const seenNew={};const seenBatch={};
+  rows.slice(1).forEach((r,i)=>{
+    const g=k=>idx[k]>=0?r[idx[k]]:'';const str=k=>String(g(k)??'').trim();
+    if(!r||r.every(c=>String(c??'').trim()===''))return;
+    const row={line:i+2,code:str('code').toUpperCase(),sku:str('sku').toUpperCase(),name:str('name'),unit:str('unit')||'unit',price:str('price')===''?0:Number(String(g('price')).replace(/,/g,'')),batchNo:str('batchNo').toUpperCase(),mfg:impDate(g('mfg')),expiry:impDate(g('expiry'))};
+    const err=[];if(!row.code)err.push('Product ID missing');if(!row.sku)err.push('SKU missing');if(!row.name)err.push('name missing');if(!row.batchNo)err.push('batch missing');
+    if(isNaN(row.price)||row.price<0)err.push('price is not a number');if(row.mfg===null)err.push('manufactured date not understood');if(row.expiry===null)err.push('expiry date not understood');
+    if(row.mfg&&row.expiry&&row.expiry<row.mfg)err.push('expiry before manufactured');
+    const ex=state.products.find(x=>(x.projectId===pid||x.projectId===ALL)&&(x.code||'').toUpperCase()===row.code);
+    if(!err.length){
+      if(!ex){const skuClash=state.products.find(x=>x.projectId===pid&&x.sku===row.sku);if(skuClash)err.push('SKU '+row.sku+' already belongs to product '+(skuClash.code||skuClash.name));
+        const prev=seenNew[row.code];if(prev&&(prev.sku!==row.sku||prev.name!==row.name))err.push('same Product ID with a different SKU or name on line '+prev.line)}
+      else if(ex.sku!==row.sku)err.push('Product ID '+row.code+' exists with SKU '+ex.sku);
+    }
+    const bkey=row.code+'|'+row.batchNo;
+    if(!err.length){
+      if(seenBatch[bkey])row.status='dup';
+      else if(ex&&state.batches.some(b=>b.productId===ex.id&&b.batchNo===row.batchNo))row.status='exists';
+      else row.status=ex?'batch':(seenNew[row.code]?'batch':'new');
+      seenBatch[bkey]=1;if(!ex&&!seenNew[row.code])seenNew[row.code]=row;
+      row.existing=!!ex;
+    }else row.status='error';
+    row.err=err;out.push(row);
+  });
+  return {rows:out};
+}
+function importPanel(){
+  if(isAll())return `<h2 style="margin-bottom:10px">Import products from Excel</h2>`+allGate('import products');
+  const imp=ui.imp;
+  let body='';
+  if(imp&&imp.error)body=`<p class="err" style="margin-top:12px">${esc(imp.error)}</p>`;
+  else if(imp&&imp.rows){
+    const c=k=>imp.rows.filter(r=>r.status===k).length;const newP=new Set(imp.rows.filter(r=>r.status==='new').map(r=>r.code)).size;
+    const newB=c('new')+c('batch');const lbl={new:['New product','ok'],batch:['New batch','ok'],exists:['Batch already exists, skipped','muted'],dup:['Repeated line, skipped','muted'],error:['Error','bad']};
+    body=`<div class="stats" style="margin-top:14px"><div class="stat"><b>${imp.rows.length}</b><span>Lines in ${esc(imp.file)}</span></div><div class="stat"><b style="color:var(--ok)">${newP}</b><span>New products</span></div><div class="stat"><b style="color:var(--ok)">${newB}</b><span>New batches</span></div><div class="stat"><b class="${c('error')?'neg':''}">${c('error')}</b><span>Lines with errors</span></div></div>
+      ${table([{l:'Line',num:1},{l:'Product ID'},{l:'SKU'},{l:'Product name'},{l:'Unit'},{l:'Price',num:1},{l:'Batch'},{l:'Manufactured'},{l:'Expiry'},{l:'Result'}],imp.rows.map(r=>[String(r.line),H(`<span class="code">${esc(r.code)}</span>`),r.sku,r.name,r.unit,{h:isNaN(r.price)?'':money(r.price)},H(`<span class="code">${esc(r.batchNo)}</span>`),r.mfg||'',r.expiry||'',H(`<span class="small" style="font-weight:700;color:var(--${lbl[r.status][1]==='muted'?'muted':lbl[r.status][1]})">${esc(lbl[r.status][0])}</span>${r.err.length?`<br><span class="small neg">${esc(r.err.join('; '))}</span>`:''}`)]))}
+      <div class="row" style="margin-top:12px">
+        <label style="flex-direction:row;align-items:center;gap:6px;color:var(--ink);font-size:14px"><input type="checkbox" id="impUpdate"> Also update name, unit and price of existing products</label>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn" data-act="impRun" ${newB||imp.rows.some(r=>r.existing&&r.status!=='error')?'':'disabled'}>Import ${newP} product${newP===1?'':'s'} and ${newB} batch${newB===1?'':'es'}</button><button class="btn plain" data-act="impClear">Cancel</button>${c('error')?`<span class="small neg">Lines with errors are skipped. Fix them in Excel and choose the file again to include them.</span>`:''}</div>`;
+  }
+  return `<div class="panel"><h2>Import products from Excel</h2>
+    <p class="muted small" style="margin:4px 0 12px">Add many products and batches at once into <strong>${esc(projCode(ui.project))}: ${esc(nm(state.projects,ui.project))}</strong>. One line per batch; repeat the Product ID on several lines to add several batches. Existing products (same Product ID) get the new batches.</p>
+    <div class="row"><button class="btn ghost" data-act="impTemplate">Download template</button>
+    <label class="btn" style="flex-direction:row;color:var(--route-ink);font-size:15px;cursor:pointer">Choose Excel file<input type="file" accept=".xlsx,.xls,.csv" data-chg="impFile" style="display:none"></label></div>
+    ${body}</div>`;
+}
 function pgProducts(u){
   const projs=myProjects(u);
   const canEdit=u.pages.includes('products');
@@ -885,6 +948,7 @@ function pgProducts(u){
     if(ui.expand===p.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="productEdit" data-id="${p.id}" class="fgrid"><label>Product ID<input name="code" required value="${esc(p.code||'')}"></label><label>SKU<input name="sku" required value="${esc(p.sku)}"></label><label>Product name<input name="name" required value="${esc(p.name)}"></label><label>Unit<input name="unit" required value="${esc(p.unit||'')}"></label><label>Unit price<input name="price" type="number" min="0" step="0.01" value="${Number(p.price)||0}"></label><div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('products','Create each product and link it to its project.')+`
+  ${importPanel()}
   <div class="panel"><h2>Create product</h2>
   <form data-form="product" class="fgrid">
     <label>Project<select name="projectId" required>${opts(projs,ui.project,p=>p.code+': '+p.name)}</select></label>
@@ -1892,6 +1956,31 @@ const acts={
     if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet([...head,...rows]);ws['!cols']=[{wch:22},{wch:16},{wch:34},{wch:10},{wch:8},{wch:16},{wch:12},{wch:26}];XLSX.utils.book_append_sheet(wb,ws,'Products');await saveFile(fname+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}));}
     else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile(fname+'.csv','\ufeff'+[...head,...rows].map(rw=>rw.map(q).join(',')).join('\n'))}
   },
+  async impTemplate(){
+    const rows=[IMP_COLS.map(c=>c[1]),['P0001','SW-500','Sparkling water 500 ml, 24 pack','case',180,'SW-2610-A','2026-10-01','2027-09-30'],['P0001','SW-500','Sparkling water 500 ml, 24 pack','case',180,'SW-2611-B','2026-11-01','2027-10-31'],['P0002','OJ-1L','Orange juice 1 L, 12 pack','case',420,'OJ-2610-A','2026-10-05','2027-02-05']];
+    const help=[['How to fill this sheet'],['One line per batch. Repeat the Product ID on several lines to add several batches of the same product.'],['Required: Product ID, SKU, Product name, Batch number.'],['Optional: Unit (default "unit"), Unit price (default 0), Manufactured, Expiry.'],['Dates: use the format 2027-09-30 or 30/09/2027.'],['If the Product ID already exists in the project, only its new batches are added.'],['Delete the example lines before importing.']];
+    if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:12},{wch:34},{wch:8},{wch:10},{wch:14},{wch:14},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Products');const h=XLSX.utils.aoa_to_sheet(help);h['!cols']=[{wch:100}];XLSX.utils.book_append_sheet(wb,h,'Instructions');await saveFile('daf-products-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
+    else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile('daf-products-template.csv','\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n'))}
+  },
+  impClear(){ui.imp=null;render()},
+  impRun(){
+    const imp=ui.imp;if(!imp||!imp.rows)return;const upd=!!(document.getElementById('impUpdate')||{}).checked;const pid=ui.project;
+    act(s=>{
+      let np=0,nb=0,nu=0;const made={};
+      imp.rows.forEach(r=>{
+        if(r.status==='error'||r.status==='dup')return;
+        let p=s.products.find(x=>(x.projectId===pid||x.projectId===ALL)&&(x.code||'').toUpperCase()===r.code)||made[r.code];
+        if(!p){if(s.products.some(x=>x.projectId===pid&&x.sku===r.sku))return;p={id:rid('prd'),projectId:pid,code:r.code,sku:r.sku,name:r.name,unit:r.unit,price:r.price||0};s.products.push(p);made[r.code]=p;np++}
+        else if(upd&&!made[r.code]&&!p._u){p.name=r.name;p.unit=r.unit;p.price=r.price||0;p._u=1;nu++}
+        if(!s.batches.some(b=>b.productId===p.id&&b.batchNo===r.batchNo)){s.batches.push({id:rid('bt'),projectId:p.projectId,productId:p.id,batchNo:r.batchNo,mfg:r.mfg||'',expiry:r.expiry||'',createdAt:now(),createdBy:cur()});nb++}
+      });
+      s.products.forEach(p=>{delete p._u});
+      if(!np&&!nb&&!nu)throw new Error('Nothing new to import.');
+      log(s,'Products imported from Excel',null,imp.file+': '+np+' new product(s), '+nb+' new batch(es)'+(nu?', '+nu+' product(s) updated':''),'',null,pid);
+      toastMsg='Imported '+np+' new product'+(np===1?'':'s')+' and '+nb+' batch'+(nb===1?'':'es')+(nu?', updated '+nu+' product'+(nu===1?'':'s'):'')+'.';
+      ui.imp=null;
+    },null);if(toastMsg){toast(toastMsg);toastMsg=''}
+  },
   clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
@@ -1916,7 +2005,7 @@ const acts={
   }
 };
 const changes={
-  project(el){ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
+  project(el){ui.imp=null;ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
   reqType(el){
     const f=el.form,T=TYPES[el.value];
     f.querySelectorAll('.w-customer').forEach(x=>x.classList.toggle('hide',!T.customer));
@@ -1945,6 +2034,12 @@ const changes={
     l.disabled=!ls.length;if(ls.length===1)l.value=ls[0][0];soTotal()},
   soLoc(){soTotal()},
   soCustSel(el){if(el.value)soNewToggle(false);const c=find(state.customers,el.value);el.form.elements.soCode.value=c?(c.code||''):'';if(c&&c.govId)el.form.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)},
+  impFile(el){const file=el.files&&el.files[0];if(!file)return;
+    if(!window.XLSX){toast('The Excel reader did not load. Check your internet connection and reload the page.','bad');el.value='';return}
+    const rd=new FileReader();rd.onload=()=>{try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array',cellDates:true});const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});const res=impParse(rows);ui.imp={file:file.name,...res};
+      if(res.rows&&!res.rows.length)ui.imp={file:file.name,error:'The file has no product lines under the header row.'}}catch(e){ui.imp={file:file.name,error:'Could not read this file: '+(e.message||e)}}
+      el.value='';render()};rd.readAsArrayBuffer(file)},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
