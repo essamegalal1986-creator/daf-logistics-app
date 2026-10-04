@@ -522,6 +522,10 @@ function partyText(s,r){return partyBase(s,r)+(r.govId?', '+nm(s.govs||[],r.govI
 function PS(){return P(state.products).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base',numeric:true}))}
 function prodLabel(p){return p?p.name+' ('+[p.code,p.sku].filter(Boolean).join(' | ')+')':''}
 function prodByCode(code,list){const k=String(code||'').trim().toUpperCase();return k?(list||P(state.products)).find(p=>(p.code||'').toUpperCase()===k):null}
+function canEditReq(r){const u=me();return !!u&&(u.role==='admin'||u.role==='ops'||u.role==='lead'||r.createdBy===u.username)}
+function reqDue(r,compact){if(!r||!r.reqDate)return compact?'':'<span class="muted small">Not set</span>';
+  const open=!['Completed','Returned to stock'].includes(r.status);const late=open&&r.reqDate<today();const dueToday=open&&r.reqDate===today();
+  return `<span style="white-space:nowrap">${esc(fmtD(r.reqDate))}</span>${late?' <span class="st st-failed">Overdue</span>':dueToday?' <span class="st st-prepared">Due today</span>':''}`}
 function custLabel(c){return c?(c.code?c.code+' ':'')+c.name:''}
 function custByCode(code){const k=String(code||'').trim().toUpperCase();return k?P(state.customers).find(c=>(c.code||'').toUpperCase()===k):null}
 function custCard(c){return c?`<div class="ccard"><div><span class="muted small">Customer</span><strong>${esc(c.name)}</strong></div><div><span class="muted small">Governorate</span>${esc(govName(c.govId)||'Not set')}</div><div><span class="muted small">Address</span>${esc(c.address||'')}</div><div><span class="muted small">Phone</span>${esc(c.phone||'')}</div></div>`:''}
@@ -693,6 +697,7 @@ function render(){
   const allOk=projs.length>1;if(!(ui.project===ALL&&allOk)&&!projs.find(p=>p.id===ui.project)){let last=null;try{last=localStorage.getItem('waybill-lastproj-'+u.id)}catch(e){}ui.project=(last===ALL&&allOk)?ALL:projs.find(p=>p.id===last)?last:allOk?ALL:(projs[0]?projs[0].id:null)}
   try{if(ui.project)localStorage.setItem('waybill-lastproj-'+u.id,ui.project)}catch(e){}
   root.innerHTML=shell(u,pages,projs);
+  if(ui.page==='requests'&&ui.editReq)fillReqEdit();
 }
 
 function loginView(){
@@ -810,7 +815,7 @@ function routeMetro(rt){
   const w=n=>stops.length?(100*n/stops.length).toFixed(1)+'%':'0';
   const nodes=[`<li class="mnode endpt start"><span class="mdot" aria-hidden="true">GO</span><div class="mlbl"><strong>Start</strong><span class="muted">${esc(ag.vehicle||'Departure')}</span></div></li>`];
   stops.forEach((x,i)=>{const c=x.r.customerId&&find(state.customers,x.r.customerId);const icon=x.t.status==='Completed'?'✓':x.t.status==='Failed'?'✕':String(i+1);
-    nodes.push(`<li class="mnode s-${slug(x.t.status)} ${moved(x)?'trav':''}"><span class="mdot" aria-hidden="true">${icon}</span><div class="mlbl"><span class="muted">Stop ${i+1}${c&&c.code?', '+esc(c.code):''}</span><strong>${esc(stopTitle(x.r))}</strong><span class="muted">${esc(govName(x.r.govId)||x.r.type)}</span>${refTag(x.r.ref)}${st(x.t.status==='Routed'?'Not started':x.t.status)}${x.t.failReason?`<span class="small" style="color:var(--bad)">${esc(x.t.failReason)}</span>`:''}</div></li>`)});
+    nodes.push(`<li class="mnode s-${slug(x.t.status)} ${moved(x)?'trav':''}"><span class="mdot" aria-hidden="true">${icon}</span><div class="mlbl"><span class="muted">Stop ${i+1}${c&&c.code?', '+esc(c.code):''}</span><strong>${esc(stopTitle(x.r))}</strong>${x.r.reqDate?`<span class="muted" style="font-size:11px">Req. ${esc(fmtD(x.r.reqDate))}</span>`:''}<span class="muted">${esc(govName(x.r.govId)||x.r.type)}</span>${refTag(x.r.ref)}${st(x.t.status==='Routed'?'Not started':x.t.status)}${x.t.failReason?`<span class="small" style="color:var(--bad)">${esc(x.t.failReason)}</span>`:''}</div></li>`)});
   nodes.push(`<li class="mnode endpt finish ${allClosed?'trav done':''}"><span class="mdot" aria-hidden="true">${allClosed?'✓':'END'}</span><div class="mlbl"><strong>Finish</strong><span class="muted">${allClosed?'Route done':pend+' stop'+(pend===1?'':'s')+' left'}</span></div></li>`);
   return `<div class="rmap-route">
     <div class="rmap-head"><span class="code" style="font-size:15px">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.note?`<span>${esc(rt.note)}</span>`:''}
@@ -857,7 +862,7 @@ function pgDashboard(u){
   if(!ui.project)return ph('dashboard')+needProject();
   const R=P(state.requests),T=P(state.tasks),S=P(state.sales);
   const c=st=>R.filter(r=>r.status===st).length;
-  const failedAll=c('Failed')+c('Returned to stock');const closed=c('Completed')+failedAll;
+  const failedAll=c('Failed')+c('Returned to stock');const overdue=R.filter(r=>r.reqDate&&r.reqDate<today()&&!['Completed','Returned to stock'].includes(r.status)).length;const closed=c('Completed')+failedAll;
   const nexts=[];
   const pages=allowedPages(u);
   if(pages.includes('prepare')&&(c('New')+c('Failed')))nexts.push([`${c('New')+c('Failed')} request(s) to prepare or reassign`,'prepare']);
@@ -872,6 +877,7 @@ function pgDashboard(u){
     <div class="stat"><b>${c('Routed')+c('In transit')}</b><span>On a route</span></div>
     <div class="stat"><b style="color:var(--ok)">${c('Completed')}</b><span>Completed</span></div>
     <div class="stat"><b class="${failedAll?'neg':''}">${failedAll}</b><span>Failed${c('Returned to stock')?`, ${c('Returned to stock')} returned to stock`:''}</span></div>
+    <div class="stat"><b class="${overdue?'neg':''}">${overdue}</b><span>Overdue, past requested date</span></div>
     <div class="stat"><b>${closed?Math.round(100*c('Completed')/closed)+'%':'–'}</b><span>Success rate${closed?` (${c('Completed')} of ${closed} closed)`:''}</span></div>
   </div>
   ${nexts.length?`<div class="panel"><h2>Next actions</h2><div class="row">${nexts.map(n=>`<button class="btn ghost" data-act="nav" data-page="${n[1]}">${esc(n[0])}</button>`).join('')}</div></div>`:''}
@@ -1077,15 +1083,16 @@ function productLine(prods,first){
 }
 
 function pgRequests(u){
+  const editR=ui.editReq?state.requests.find(x=>x.id===ui.editReq&&x.status==='New'):null;if(ui.editReq&&!editR)ui.editReq=null;
   if(!ui.project)return ph('requests')+needProject();
   const prods=PS();
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
   return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
-  ${isAll()?allGate('create a request'):`<div class="panel"><h2>New request</h2>
-  <form data-form="request" class="stack" id="reqForm">
+  ${isAll()&&!editR?allGate('create a request'):`<div class="panel" id="reqPanel"${editR?' style="border:2px solid var(--route)"':''}><div class="spread"><h2>${editR?'Edit request '+esc(editR.ref):'New request'}</h2>${editR?`<span class="small muted">Created by ${esc(editR.createdBy)}, ${fmtT(editR.createdAt)}</span>`:''}</div>
+  <form data-form="request" class="stack" id="reqForm"${editR?` data-edit="${esc(editR.id)}"`:''}>
     <div class="fgrid">
       <label>Request type<select name="type" data-chg="reqType" required>${Object.keys(TYPES).map(t=>`<option>${t}</option>`).join('')}</select></label>
       <label>Governorate<select name="govId" required>${opts(govsSorted(),'',null,'Choose governorate')}</select></label>
@@ -1093,6 +1100,7 @@ function pgRequests(u){
       <label class="w-customer">Customer<select name="customerId" data-chg="reqCustomer">${opts(P(state.customers),'',custLabel,'Choose customer')}</select></label>
       <label class="w-transfer hide">Transfer to<select name="dest"><option value="">Choose sales agent or warehouse</option>${dests}</select></label>
       <label class="w-received hide">Supplier or source<input name="supplier" placeholder="Optional"></label>
+      <label>Requested date<input type="date" name="reqDate"><span class="small muted" style="font-weight:400">Expected delivery date</span></label>
     </div>
     <div id="custCard" class="w-customer"></div>
     <div id="reqNew" class="panel hide" style="background:var(--sunk);margin:0">
@@ -1109,13 +1117,13 @@ function pgRequests(u){
       <span class="muted small w-doc hide">Products are optional for documentation.</span></div>
     <div id="reqImpMsg"></div>
     <label>Notes<textarea name="notes" placeholder="Optional instructions for the team"></textarea></label>
-    <div><button class="btn" type="submit">Create request</button></div>
+    <div class="row"><button class="btn" type="submit">${editR?'Save changes':'Create request'}</button>${editR?'<button type="button" class="btn plain" data-act="reqEditCancel">Cancel editing</button>':''}</div>
   </form>
   <template id="lineTpl">${productLine(prods,false)}</template>
   </div>`}
   <div class="spread" style="margin-bottom:10px"><h2>Requests${isAll()?' in all projects':' in this project'}</h2>
     <label style="flex-direction:row;align-items:center;gap:8px">Status<select data-chg="reqFilter" style="width:auto"><option value="">All</option>${['New','Prepared','Routed','In transit','Completed','Failed'].map(s=>`<option ${s===f?'selected':''}>${s}</option>`).join('')}</select></label></div>
-  ${table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent'},{l:'Task date'},{l:'Created'},{l:''}],rows,'No requests yet. Create the first one above.')}`;
+  ${table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Requested date'},{l:'Agent'},{l:'Trip date'},{l:'Created'},{l:''}],rows,'No requests yet. Create the first one above.')}`;
 }
 
 function preparePanel(r){
@@ -1152,7 +1160,7 @@ function preparePanel(r){
 function pgPrepare(u){
   if(!ui.project)return ph('prepare')+needProject();
   const R=P(state.requests).filter(r=>['New','Prepared','Failed'].includes(r.status));
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
   const locked=P(state.requests).filter(r=>['Routed','In transit'].includes(r.status)).length;
   return ph('prepare','Choose where the stock for each product comes from or goes to, a warehouse or a sales team member. This creates the task; the agent and date are set on the route.')+
   table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent and date'},{l:''}],rows,'Nothing to prepare. New requests from Operations appear here.')+
@@ -1188,7 +1196,7 @@ function stopBody(t,r){
   else if(r.type==='Transfer')where=`<strong>Transfer to ${esc(locName(state,r.dest))}</strong>${r.govId?`<br><span class="muted small">${esc(govName(r.govId))}</span>`:''}`;
   else where=`<strong>Receive stock</strong>${r.supplier?`<br><span class="muted small">From ${esc(r.supplier)}</span>`:''}`;
   const items=pickTable(r,true);
-  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
+  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
 }
 
 function routeCard(rt,agentView){
@@ -1210,7 +1218,7 @@ function pgRoutes(u){
   const ags=AG();
   const waiting=P(state.tasks).filter(t=>t.status==='Awaiting route');
   const sel='';
-  const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="muted small">Prepared ${fmtT(r.preparedAt)}</span></label>`}).join('');
+  const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="small">${r.reqDate?'Requested '+reqDue(r,true):'<span class="muted">No requested date</span>'}</span></label>`}).join('');
   const rf=ui.routeF||{gov:'',group:''};
   const grpOf=id=>find(state.routeGroups,id);
   const routes=P(state.routes).filter(rt=>(!rf.group||rt.groupId===rf.group)&&(!rf.gov||routeGovs(rt).includes(rf.gov))).slice().reverse();
@@ -1524,7 +1532,7 @@ function reportData(){
   const D={};
   D.activity={cols:['When','User','Action','Reference','Status','Detail'],rows:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&(!scopeOwn()||visLog(l))&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[fmtT(l.at),l.by,l.action,l.ref?H(refTag(l.ref)):'',l.status?H(st(l.status)):'',l.detail]),csv:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&(!scopeOwn()||visLog(l))&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[l.at,l.by,l.action,l.ref,l.status,l.detail])};
   const R=P(state.requests).filter(r=>inRange(r.createdAt)&&okRef(r.ref)&&okGov(r.ref)&&(!f.type||r.type===f.type)&&okUser(r.createdBy)&&okSt(r.status)).slice().reverse();
-  D.requests={cols:['Reference','Type','Governorate','Customer ID','Customer or destination','Products','Status','Created by','Created','Prepared by','Completed'],rows:R.map(r=>[H(refTag(r.ref)),r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),H(st(r.status)),r.createdBy,fmtT(r.createdAt),r.preparedBy||'',fmtT(r.completedAt)]),csv:R.map(r=>[r.ref,r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),r.status,r.createdBy,r.createdAt,r.preparedBy||'',r.completedAt||''])};
+  D.requests={cols:['Reference','Type','Governorate','Customer ID','Customer or destination','Products','Status','Requested date','Created by','Created','Prepared by','Completed'],rows:R.map(r=>[H(refTag(r.ref)),r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),H(st(r.status)),H(reqDue(r,true)),r.createdBy,fmtT(r.createdAt),r.preparedBy||'',fmtT(r.completedAt)]),csv:R.map(r=>[r.ref,r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),r.status,r.reqDate||'',r.createdBy,r.createdAt,r.preparedBy||'',r.completedAt||''])};
   const T=P(state.tasks).filter(t=>inRange(t.createdAt)&&okRef(t.ref)&&okType(t.ref)&&okGov(t.ref)&&okUser(t.createdBy)&&okSt(t.status)).slice().reverse();
   D.tasks={cols:['Task','Reference','Agent','Task date','Route','Status','Prepared by','Completed or failed'],rows:T.map(t=>[H(`<span class="code">${esc(t.id)}</span>`),H(refTag(t.ref)),nm(state.agents,t.agentId),fmtD(t.date),(find(state.routes,t.routeId)||{}).name||'',H(st(t.status)),t.createdBy,fmtT(t.completedAt||t.failedAt)]),csv:T.map(t=>[t.id,t.ref,nm(state.agents,t.agentId),t.date,(find(state.routes,t.routeId)||{}).name||'',t.status,t.createdBy,t.completedAt||t.failedAt||''])};
   const RT=P(state.routes).filter(r=>inRange(r.createdAt)&&(!q||r.taskIds.some(id=>okRef((find(state.tasks,id)||{}).ref))||r.id.toLowerCase().includes(q))&&okUser(r.createdBy)&&okSt(routeStatus(r))&&(!f.gov||routeGovs(r).includes(f.gov))).slice().reverse();
@@ -1555,6 +1563,7 @@ function traceView(ref){
     <div class="spread" style="margin-bottom:12px"><div class="row">${refTag(ref,true)}<span class="ty">${esc(r.type)}</span>${st(r.status)}${waitBadge(r)}</div><button class="btn plain sm" data-act="clearTrace">Close trace</button></div>
     <div style="margin-bottom:14px">${chain(state,r)}</div>
     <div class="kv" style="margin-bottom:16px">
+      <div><span>Requested date</span>${reqDue(r)}</div>
       <div><span>Request</span>${esc(partyText(state,r))}<br><span>${r.items.length} product line${r.items.length===1?'':'s'}, ${r.items.reduce((a,it)=>a+Number(it.qty||0),0)} units</span></div>
       <div><span>Task</span>${t?`<span class="code">${esc(t.id)}</span><br>${t.agentId?esc(nm(state.agents,t.agentId))+', '+fmtD(t.date):'<span class="muted">Agent and date are set on the trip</span>'}<br>${st(t.status)}`:'Not prepared yet'}</div>
       <div><span>Route</span>${rt?`<span class="code">${esc(rt.name)}</span>${rt.note?' '+esc(rt.note):''}, ${fmtD(rt.date)}`:'Not routed yet'}</div>
@@ -1683,7 +1692,8 @@ const forms={
     move(s,{ref:'OPENING',type:'Opening stock',projectId:(find(s.products,fd.get('product'))||{}).projectId||ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:fd.get('wh')});
     log(s,'Opening stock added',null,q+' × '+nm(s.products,fd.get('product'))+', batch '+batchNo(s,bid)+' into '+locName(s,fd.get('wh')),'');
   },'Opening stock added.')},
-  request(fd){
+  request(fd,form){
+    const editId=form&&form.dataset.edit;
     const rn=document.getElementById('reqNew');let nc=null;
     if(rn&&!rn.classList.contains('hide')&&TYPES[fd.get('type')].customer){
       const code=String(fd.get('custCode')||'').trim().toUpperCase(),name=String(fd.get('rnc_name')||'').trim();
@@ -1699,15 +1709,26 @@ const forms={
     ps.forEach((p,i)=>{const q=Math.floor(Number(qs[i]));if(!p&&!qs[i])return;if(!p)throw new Error('Choose a product on every line with a quantity.');if(!bs[i])throw new Error('Choose a batch for '+nm(s.products,p)+'.');if(!(q>0))throw new Error('Enter a quantity above zero for '+nm(s.products,p)+'.');items.push({productId:p,batchId:bs[i],qty:q,warehouseId:''})});
     if(false){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
     if(!items.length&&type!=='Documentation')throw new Error('Add at least one product and quantity.');
-    const r={projectId:ui.project,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:now(),createdBy:cur()};
+    const old=editId?find(s.requests,editId):null;
+    if(editId&&(!old||old.status!=='New'))throw new Error('This request has already been prepared, so it can no longer be edited here.');
+    const r=old?{projectId:old.projectId,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:old.createdAt,createdBy:old.createdBy}:{projectId:ui.project,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:now(),createdBy:cur()};
     if(T.customer){r.customerId=nc?nc.id:fd.get('customerId');const typed=String(fd.get('custCode')||'').trim();if(!r.customerId)throw new Error(typed?'No customer with ID '+typed+' in this project.':'Enter the customer ID or choose the customer.')}
     r.govId=fd.get('govId');if(!r.govId)throw new Error('Choose the governorate.');
     if(type==='Transfer'){r.dest=fd.get('dest');if(!r.dest)throw new Error('Choose where the stock is transferred to.')}
     if(type==='Received')r.supplier=String(fd.get('supplier')||'').trim();
+    r.reqDate=fd.get('reqDate')||'';
+    if(old){
+      const before=old.type+': '+partyText(s,old)+(old.items.length?', '+itemsText(s,old):'')+(old.reqDate?', requested '+old.reqDate:'');
+      r.ref=old.ref;r.id=old.id;r.updatedAt=now();r.updatedBy=cur();
+      s.requests[s.requests.indexOf(old)]=r;
+      const after=type+': '+partyText(s,r)+(items.length?', '+itemsText(s,r):'')+(r.reqDate?', requested '+r.reqDate:'');
+      log(s,'Request updated',r.ref,before===after?'No changes':'Before: '+before+' | After: '+after,'New');
+      toastMsg='Request '+r.ref+' updated'+(nc?' and customer '+nc.code+' added':'')+'.';ui.editReq=null;
+    }else{
     r.ref=nextRef(s);r.id=r.ref;
     s.requests.push(r);
     log(s,'Request created',r.ref,type+': '+partyText(s,r)+(items.length?', '+itemsText(s,r):''),'New');
-    toastMsg='Request '+r.ref+' created'+(nc?' and customer '+nc.code+' added':'')+'.';
+    toastMsg='Request '+r.ref+' created'+(nc?' and customer '+nc.code+' added':'')+'.';}
   },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   prepare(fd,f){act(s=>{
     const r=find(s.requests,f.dataset.id),T=TYPES[r.type];
@@ -1914,7 +1935,7 @@ function completeTask(s,t,r){
 
 /* ---------- Click handlers ---------- */
 const acts={
-  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.pending=false;render();window.scrollTo(0,0)},
+  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.pending=false;render();window.scrollTo(0,0)},
   async logout(){if(FB){if(me())await fbAct(s=>log(s,'Signed out',null,'','',undefined,null));ui.pwOpen=false;await FB.auth.signOut();return}act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
   myPwOpen(){ui.pwOpen=true;render()},
   myPwClose(){ui.pwOpen=false;render()},
@@ -1972,6 +1993,8 @@ const acts={
   async backupData(){await saveFile('daf-logistics-backup-'+today()+'.json',JSON.stringify(state,null,1));act(s=>log(s,'Backup downloaded',null,'','',undefined,null))},
   askDelete(el){openDeleteModal(el.dataset.kind,el.dataset.id)},
   closeModal(el,ev){closeModal()},
+  reqEdit(el){ui.editReq=el.dataset.id;render();const pn=document.getElementById('reqPanel');if(pn&&pn.scrollIntoView)pn.scrollIntoView({block:'start'});else window.scrollTo(0,0)},
+  reqEditCancel(){ui.editReq=null;render()},
   reqNewOpen(){reqNewToggle(true)},
   reqNewCancel(){reqNewToggle(false);const f=document.getElementById('reqForm');const t=f.elements.custCode.value.trim();applyCustomer(f,custByCode(t),t)},
   soNewOpen(){soNewToggle(true)},
@@ -1983,7 +2006,7 @@ const acts={
     const c=find(state.customers,r.customerId)||{};
     const head=[['DAF Logistics App, order products'],['Reference',r.ref],['Type',r.type],['Status',r.status],['Project',projCode(r.projectId)+': '+nm(state.projects,r.projectId)],
       ['Customer ID',c.code||''],['Customer / destination',partyBase(state,r)],['Governorate',govName(r.govId)],['Created',fmtT(r.createdAt)+' by '+r.createdBy],
-      ['Agent',t&&t.agentId?nm(state.agents,t.agentId):''],['Trip',t&&t.routeId?(find(state.routes,t.routeId)||{}).name||'':''],['Task date',t&&t.date||''],[]];
+      ['Requested date',r.reqDate||''],['Agent',t&&t.agentId?nm(state.agents,t.agentId):''],['Trip',t&&t.routeId?(find(state.routes,t.routeId)||{}).name||'':''],['Trip date',t&&t.date||''],[]];
     const rows=[['Product ID','SKU','Product name','Quantity','Unit','Batch','Expiry',pickHead(r)]];
     r.items.forEach(it=>{const p=find(state.products,it.productId)||{};const b=find(state.batches,it.batchId)||{};rows.push([p.code||'',p.sku||'',p.name||'',Number(it.qty),p.unit||'',b.batchNo||'',b.expiry||'',T.flow==='none'?'':(itemLoc(it)?locName(state,itemLoc(it)):'Not chosen yet')])});
     rows.push(['','','Total',r.items.reduce((a,it)=>a+Number(it.qty||0),0)]);
@@ -2040,7 +2063,7 @@ const acts={
   }
 };
 const changes={
-  project(el){ui.imp=null;ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
+  project(el){ui.imp=null;ui.editReq=null;ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
   reqType(el){
     const f=el.form,T=TYPES[el.value];
     f.querySelectorAll('.w-customer').forEach(x=>x.classList.toggle('hide',!T.customer));
@@ -2131,6 +2154,16 @@ function applyCustomer(f,c,typed){
   const card=document.getElementById('custCard');
   if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;card.innerHTML=custCard(c)}
   else{f.elements.customerId.value='';const n=document.getElementById('reqNew');const open=n&&!n.classList.contains('hide');card.innerHTML=(typed&&!open)?`<div class="row"><span class="err">No customer with ID ${esc(typed)} in this project.</span><button type="button" class="btn ghost sm" data-act="reqNewOpen">Add as new customer</button></div>`:''}
+}
+function fillReqEdit(){
+  const f=document.getElementById('reqForm');const r=state.requests.find(x=>x.id===ui.editReq);if(!f||!r)return;
+  f.elements.type.value=r.type;changes.reqType(f.elements.type);
+  if(r.customerId){const c=find(state.customers,r.customerId);f.elements.custCode.value=c?(c.code||''):'';f.elements.customerId.value=r.customerId;applyCustomer(f,c,'')}
+  f.elements.govId.value=r.govId||'';if(r.dest)f.elements.dest.value=r.dest;if(r.supplier)f.elements.supplier.value=r.supplier;
+  f.elements.reqDate.value=r.reqDate||'';f.elements.notes.value=r.notes||'';
+  r.items.forEach((it,i)=>{let lines=document.querySelectorAll('#lines .line');if(i>=lines.length){document.getElementById('lines').appendChild(document.getElementById('lineTpl').content.cloneNode(true));lines=document.querySelectorAll('#lines .line')}
+    const line=lines[i];const sel=line.querySelector('select[name=item_product]');sel.value=it.productId;changes.lineProduct(sel);
+    const bt=line.querySelector('input[name=item_batch]');bt.value=batchNo(state,it.batchId);batchHint(line,r.type);line.querySelector('input[name=item_qty]').value=it.qty});
 }
 function reqNewToggle(on){const n=document.getElementById('reqNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('reqForm');if(on){f.elements.customerId.value='';document.getElementById('custCard').innerHTML='';(f.elements.custCode.value.trim()?f.elements.rnc_name:f.elements.custCode).focus()}}
 function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
