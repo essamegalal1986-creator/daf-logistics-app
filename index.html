@@ -663,9 +663,10 @@ function myProjIds(){const u=me();return u?myProjects(u).map(p=>p.id):[]}
 const P0=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>x.projectId===ALL||ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project||x.projectId===ALL)};
 /* Users limited to "own records" only see what they created or what is assigned to them */
 function scopeOwn(){const u=me();return !!u&&u.scope==='own'&&u.role!=='admin'}
-function visReq(r){const u=me();if(!u||!r)return false;if(r.createdBy===u.username||r.preparedBy===u.username)return true;const t=taskOf(state,r.ref);if(t&&t.agentId&&myAgentIds(u).includes(t.agentId))return true;if(t&&t.routeId){const rt=find(state.routes,t.routeId);if(rt&&rt.createdBy===u.username)return true}return false}
+function visReq(r){const u=me();if(!u||!r)return false;if(r.createdBy===u.username)return true;const t=taskOf(state,r.ref);return !!(t&&t.agentId&&myAgentIds(u).includes(t.agentId))}
 function visTask(t){const r=find(state.requests,t.requestId);return visReq(r)}
 function visRoute(rt){const u=me();return rt.createdBy===u.username||myAgentIds(u).includes(rt.agentId)||rt.taskIds.some(id=>{const t=find(state.tasks,id);return t&&visTask(t)})}
+function ownTrip(rt){const u=me();return !scopeOwn()||rt.createdBy===u.username||myAgentIds(u).includes(rt.agentId)}
 function visSale(x){const u=me();if(x.recordedBy===u.username)return true;const r=state.requests.find(y=>y.ref===x.ref);return !!r&&visReq(r)}
 function visRef(ref){if(!ref)return false;const r=state.requests.find(y=>y.ref===ref);if(r)return visReq(r);const sl=state.sales.find(y=>y.ref===ref);if(sl)return visSale(sl);const c=(state.counts||[]).find(y=>y.id===ref);return !!c&&c.by===me().username}
 function visMov(m){return m.by===me().username||visRef(m.ref)}
@@ -800,7 +801,7 @@ function stopTitle(r){
   const c=find(state.customers,r.customerId);return c?c.name:'Customer';
 }
 function routeMetro(rt){
-  const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
+  const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).filter(t=>ownTrip(rt)||visTask(t)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
   const closed=x=>['Completed','Failed'].includes(x.t.status);
   const moved=x=>closed(x)||x.t.status==='In transit';
   const done=stops.filter(x=>x.t.status==='Completed').length,failed=stops.filter(x=>x.t.status==='Failed').length,pend=stops.length-done-failed;
@@ -837,7 +838,7 @@ function agentPanel(){
     const routed=c('Routed'),transit=c('In transit'),done=c('Completed'),failed=c('Failed');
     const routes=new Set(ts.map(t=>t.routeId).filter(Boolean)).size;
     return {a,total:ts.length,pending:routed+transit,routed,transit,done,failed,routes,todayOpen:ts.filter(t=>t.date===t0&&['Routed','In transit'].includes(t.status)).length};
-  }).sort((x,y)=>y.pending-x.pending||y.total-x.total||x.a.name.localeCompare(y.a.name));
+  }).filter(r=>!scopeOwn()||r.total>0).sort((x,y)=>y.pending-x.pending||y.total-x.total||x.a.name.localeCompare(y.a.name));
   const sum=k=>rows.reduce((a,r)=>a+r[k],0);
   const awaiting=P(state.tasks).filter(t=>t.status==='Awaiting route').length;
   const bar=r=>{if(!r.total)return '<span class="muted small">No tasks</span>';const w=n=>(100*n/r.total).toFixed(1)+'%';
@@ -1192,7 +1193,7 @@ function stopBody(t,r){
 
 function routeCard(rt,agentView){
   const s=routeStatus(rt);
-  const stops=rt.taskIds.map((id,i)=>{const t=find(state.tasks,id);if(!t)return '';const r=find(state.requests,t.requestId);if(!r)return '';
+  const stops=rt.taskIds.map((id,i)=>{const t=find(state.tasks,id);if(!t||(!ownTrip(rt)&&!visTask(t)))return '';const r=find(state.requests,t.requestId);if(!r)return '';
     let actions='';
     if(agentView&&['Routed','In transit'].includes(t.status)){
       actions=`<div class="row" style="margin-top:10px">${t.status==='Routed'?`<button class="btn plain sm" data-act="taskStart" data-id="${t.id}">Start</button>`:''}
