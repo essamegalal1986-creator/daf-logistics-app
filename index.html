@@ -1027,14 +1027,14 @@ function pgSetup(u){
     const pj=find(state.projects,ui.project)||{};
     body=`<div class="panel"><p class="note" style="margin-bottom:12px">Showing products and warehouses of project <strong>${esc(pj.code)}: ${esc(pj.name)}</strong>. To add opening stock for another project, switch the project at the top of the page.</p>
       ${!here.length?`<p class="err" style="margin-bottom:10px">This project has no products yet.${elsewhere.length?' Products in your other projects: '+esc(elsewhere.map(p=>p.sku+' '+p.name+' ('+((find(state.projects,p.projectId)||{}).code||'')+')').join(', '))+'.':''}</p>`:''}
-      ${!P(state.warehouses).length?`<p class="err" style="margin-bottom:10px">This project has no warehouses yet. Add one on the Warehouses tab first.</p>`:''}
-      <p class="muted small" style="margin-bottom:10px">Opening stock sets the starting balance of a warehouse before any orders move.</p><form data-form="opening" class="fgrid">
-      <label>Warehouse<select name="wh" required>${opts(P(state.warehouses),'',null,'Choose warehouse')}</select></label>
+      ${!P(state.warehouses).length&&!P(state.salesTeam).length?`<p class="err" style="margin-bottom:10px">This project has no warehouses or sales team yet. Add one on the Warehouses or Sales team tab first.</p>`:''}
+      <p class="muted small" style="margin-bottom:10px">Opening stock sets the starting balance of a warehouse or a sales team member before any orders move.</p><form data-form="opening" class="fgrid">
+      <label>Location<select name="wh" required><option value="">Choose warehouse or sales team</option>${P(state.warehouses).length?`<optgroup label="Warehouses">${P(state.warehouses).map(w=>`<option value="W:${w.id}">${esc(w.name)}</option>`).join('')}</optgroup>`:''}${P(state.salesTeam).length?`<optgroup label="Sales team">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`:''}</select></label>
       <label>Product<select name="product" required data-chg="lineProduct">${opts(P(state.products),'',p=>p.sku+' '+p.name,'Choose product')}</select></label>
       <label>Batch<select name="batch" required data-kind="Received">${batchOptions(state,'','Received')}</select></label>
       <label>Quantity<input name="qty" type="number" min="1" step="1" required></label>
       <button class="btn" type="submit">Add opening stock</button></form></div>`+
-      table([{l:'When'},{l:'Warehouse'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'By'}],mv.map(m=>[fmtT(m.at),locName(state,m.to),nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),m.by]),'No opening stock yet.');
+      table([{l:'When'},{l:'Location'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'By'}],mv.map(m=>[fmtT(m.at),locName(state,m.to),nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),m.by]),'No opening stock yet.');
   }
   if(false)body=body.replace(/^<div class="panel">[\s\S]*?<\/form><\/div>/,allGate('add or change '+(tabs.find(x=>x[0]===t)||['',''])[1].toLowerCase()));
   return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+(isAll()&&!['govs','groups','opening'].includes(t)?'<p class="note" style="margin-bottom:14px">You are in <strong>All my projects</strong>. What you add here is <strong>shared by every project</strong>, marked ALL.</p>':'')+
@@ -1650,8 +1650,8 @@ const forms={
   opening(fd){act(s=>{
     const q=Math.floor(Number(fd.get('qty')));if(!(q>0))throw new Error('Enter a quantity above zero.');
     const bid=fd.get('batch');if(!bid)throw new Error('Choose the batch.');
-    move(s,{ref:'OPENING',type:'Opening stock',projectId:(find(s.products,fd.get('product'))||{}).projectId||ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:'W:'+fd.get('wh')});
-    log(s,'Opening stock added',null,q+' × '+nm(s.products,fd.get('product'))+', batch '+batchNo(s,bid)+' into '+nm(s.warehouses,fd.get('wh')),'');
+    move(s,{ref:'OPENING',type:'Opening stock',projectId:(find(s.products,fd.get('product'))||{}).projectId||ui.project,productId:fd.get('product'),batchId:bid,qty:q,from:'X:Opening',to:fd.get('wh')});
+    log(s,'Opening stock added',null,q+' × '+nm(s.products,fd.get('product'))+', batch '+batchNo(s,bid)+' into '+locName(s,fd.get('wh')),'');
   },'Opening stock added.')},
   request(fd){
     const rn=document.getElementById('reqNew');let nc=null;
