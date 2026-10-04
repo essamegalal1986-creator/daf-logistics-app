@@ -420,7 +420,7 @@ function itemLoc(it){return it.loc||(it.warehouseId?'W:'+it.warehouseId:'')}
 function batchesFor(s,pid){return s.batches.filter(b=>b.productId===pid).slice().sort((a,b)=>(a.expiry||'9999').localeCompare(b.expiry||'9999'))}
 /* Which batches a request line may use: stock-out types need stock on hand, stock-in types may use any batch of the product */
 /* Batches a request line may use, for the searchable batch field */
-function allowedBatches(s,pid,type){const flow=(TYPES[type]||{}).flow;const need=flow==='out';return batchesFor(s,pid).filter(b=>!need||batchAvail(s,b.id)>0)}
+function allowedBatches(s,pid,type){const need=false;return batchesFor(s,pid).filter(b=>!need||batchAvail(s,b.id)>0)}
 function batchLabel(s,b){return `${batchAvail(s,b.id)} available${b.expiry?', exp '+fmtD(b.expiry):''}`}
 function findBatch(s,pid,text){const t=String(text||'').trim().toUpperCase();return t?batchesFor(s,pid).find(b=>b.batchNo.toUpperCase()===t):null}
 let dlSeq=0;
@@ -508,13 +508,13 @@ function stockShort(s,r){
   const out=[];for(const k in need){const [loc,pid,bid]=k.split('|');const have=loc==='*'?batchAvail(s,bid):qty(s,loc,pid,bid);if(have<need[k])out.push({loc:loc==='*'?'':loc,pid,bid,have,need:need[k]})}
   return out;
 }
-function waitBadge(r){const sh=stockShort(state,r);if(!sh.length||r.type!=='Transfer')return '';return ` <span class="st st-waiting-for-stock" title="${esc(sh.map(x=>(x.loc?locName(state,x.loc)+': ':'')+x.have+' of '+x.need+' '+nm(state.products,x.pid)+' ('+batchNo(state,x.bid)+')').join('; '))}">Waiting for stock</span>`}
+function waitBadge(r){const sh=stockShort(state,r);if(!sh.length)return '';return ` <span class="st st-waiting-for-stock" title="${esc(sh.map(x=>(x.loc?locName(state,x.loc)+': ':'')+x.have+' of '+x.need+' '+nm(state.products,x.pid)+' ('+batchNo(state,x.bid)+')').join('; '))}">Waiting for stock</span>`}
 function checkStock(s,r){
   const need={};
   r.items.forEach(it=>{const k=itemLoc(it)+'|'+it.productId+'|'+(it.batchId||'');need[k]=(need[k]||0)+Number(it.qty)});
   for(const k in need){
     const [loc,pid,bid]=k.split('|');const have=qty(s,loc,pid,bid);
-    if(have<need[k])throw new Error((r.type==='Transfer'&&r.status!=='New'&&r.status!=='Prepared'&&r.status!=='Failed'?'Cannot complete yet, waiting for stock. ':'')+`${locName(s,loc)} has ${have} of ${nm(s.products,pid)}, batch ${batchNo(s,bid)}. This request needs ${need[k]}.`);
+    if(have<need[k])throw new Error('Cannot complete yet, waiting for stock. '+`${locName(s,loc)} has ${have} of ${nm(s.products,pid)}, batch ${batchNo(s,bid)}. This request needs ${need[k]}.`);
   }
 }
 function itemsText(s,r){return r.items.map(it=>`${it.qty} × ${nm(s.products,it.productId,'?')}${it.batchId?' (batch '+batchNo(s,it.batchId)+')':''}`).join(', ')}
@@ -1180,7 +1180,7 @@ function routeCard(rt,agentView){
     let actions='';
     if(agentView&&['Routed','In transit'].includes(t.status)){
       actions=`<div class="row" style="margin-top:10px">${t.status==='Routed'?`<button class="btn plain sm" data-act="taskStart" data-id="${t.id}">Start</button>`:''}
-        <button class="btn ok sm" data-act="taskDone" data-id="${t.id}">Mark completed</button>
+        ${stockShort(state,r).length?`<button class="btn ok sm" disabled title="Waiting for stock" style="opacity:.45;cursor:not-allowed">Mark completed</button><span class="small" style="color:var(--warn);font-weight:700">Waiting for stock in ${esc([...new Set(stockShort(state,r).map(x=>locName(state,x.loc)||'the warehouse'))].join(', '))}</span>`:`<button class="btn ok sm" data-act="taskDone" data-id="${t.id}">Mark completed</button>`}
         <input id="why_${t.id}" placeholder="Reason if failed" style="max-width:220px;padding:4px 8px" aria-label="Reason for failure">
         <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
     }
@@ -1678,7 +1678,7 @@ const forms={
     const type=fd.get('type'),T=TYPES[type];
     const ps=fd.getAll('item_product'),qs=fd.getAll('item_qty');const bs=[...document.querySelectorAll('#lines .line')].map(l=>{const pid=l.querySelector('select[name=item_product]').value,txt=l.querySelector('input[name=item_batch]').value;if(!pid||!txt.trim())return '';const b=findBatch(s,pid,txt);if(!b)throw new Error('Batch '+txt.trim()+' was not found for '+nm(s.products,pid)+'. Pick one from the list.');if(!allowedBatches(s,pid,type).some(x=>x.id===b.id))throw new Error('Batch '+b.batchNo+' has no stock available.');return b.id});const items=[];
     ps.forEach((p,i)=>{const q=Math.floor(Number(qs[i]));if(!p&&!qs[i])return;if(!p)throw new Error('Choose a product on every line with a quantity.');if(!bs[i])throw new Error('Choose a batch for '+nm(s.products,p)+'.');if(!(q>0))throw new Error('Enter a quantity above zero for '+nm(s.products,p)+'.');items.push({productId:p,batchId:bs[i],qty:q,warehouseId:''})});
-    if(T.flow==='out'){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
+    if(false){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
     if(!items.length&&type!=='Documentation')throw new Error('Add at least one product and quantity.');
     const r={projectId:ui.project,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:now(),createdBy:cur()};
     if(T.customer){r.customerId=nc?nc.id:fd.get('customerId');const typed=String(fd.get('custCode')||'').trim();if(!r.customerId)throw new Error(typed?'No customer with ID '+typed+' in this project.':'Enter the customer ID or choose the customer.')}
@@ -1695,7 +1695,7 @@ const forms={
     if(!['New','Prepared','Failed'].includes(r.status))throw new Error('This request is already on a route.');
     if(T.flow!=='none'){
       r.items.forEach((it,i)=>{const l=fd.get('wh_'+i);if(!l)throw new Error('Choose a warehouse or sales team member for every product.');if(r.type==='Transfer'&&l===r.dest)throw new Error('The source and the transfer destination cannot be the same.');it.loc=l;it.warehouseId=l.startsWith('W:')?l.slice(2):''});
-      if(T.flow==='out')checkStock(s,r);
+      /* stock is checked only when the agent completes the stop */
     }
     r.status='Prepared';r.preparedAt=now();r.preparedBy=cur();r.failReason='';
     let t=taskOf(s,r.ref);
