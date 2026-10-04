@@ -660,7 +660,19 @@ const AG=()=>P(state.agents).filter(a=>!a.deleted);
 const isAdmin=()=>{const u=me();return !!u&&u.role==='admin'};
 function delBtn(kind,id){return isAdmin()?`<button class="btn bad sm" data-act="askDelete" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`:''}
 function myProjIds(){const u=me();return u?myProjects(u).map(p=>p.id):[]}
-const P=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>x.projectId===ALL||ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project||x.projectId===ALL)};
+const P0=list=>{if(isAll()){const ids=myProjIds();return list.filter(x=>x.projectId===ALL||ids.includes(x.projectId))}return list.filter(x=>x.projectId===ui.project||x.projectId===ALL)};
+/* Users limited to "own records" only see what they created or what is assigned to them */
+function scopeOwn(){const u=me();return !!u&&u.scope==='own'&&u.role!=='admin'}
+function visReq(r){const u=me();if(!u||!r)return false;if(r.createdBy===u.username||r.preparedBy===u.username)return true;const t=taskOf(state,r.ref);if(t&&t.agentId&&myAgentIds(u).includes(t.agentId))return true;if(t&&t.routeId){const rt=find(state.routes,t.routeId);if(rt&&rt.createdBy===u.username)return true}return false}
+function visTask(t){const r=find(state.requests,t.requestId);return visReq(r)}
+function visRoute(rt){const u=me();return rt.createdBy===u.username||myAgentIds(u).includes(rt.agentId)||rt.taskIds.some(id=>{const t=find(state.tasks,id);return t&&visTask(t)})}
+function visSale(x){const u=me();if(x.recordedBy===u.username)return true;const r=state.requests.find(y=>y.ref===x.ref);return !!r&&visReq(r)}
+function visRef(ref){if(!ref)return false;const r=state.requests.find(y=>y.ref===ref);if(r)return visReq(r);const sl=state.sales.find(y=>y.ref===ref);if(sl)return visSale(sl);const c=(state.counts||[]).find(y=>y.id===ref);return !!c&&c.by===me().username}
+function visMov(m){return m.by===me().username||visRef(m.ref)}
+function visLog(l){return l.by===me().username||visRef(l.ref)}
+const P=list=>{const out=P0(list);if(!state||!scopeOwn())return out;
+  if(list===state.requests)return out.filter(visReq);if(list===state.tasks)return out.filter(visTask);if(list===state.routes)return out.filter(visRoute);
+  if(list===state.sales)return out.filter(visSale);if(list===state.movements)return out.filter(visMov);if(list===state.counts)return out.filter(c=>c.by===me().username);return out};
 function projCode(pid){return pid===ALL?'ALL':(find(state.projects,pid)||{}).code||''}
 function projTag(pid){return isAll()?`<span class="ptag">${esc(projCode(pid))}</span>`:''}
 function allGate(what){const projs=myProjects(me());return `<div class="panel"><p style="margin-bottom:10px">You are viewing <strong>all projects</strong>. To ${esc(what)}, choose the project first:</p><div class="row">${projs.map(p=>`<button class="btn ghost sm" data-act="pickProject" data-id="${p.id}">${esc(p.code)}: ${esc(p.name)}</button>`).join('')}</div></div>`}
@@ -851,7 +863,7 @@ function pgDashboard(u){
   if(pages.includes('routes')&&T.filter(t=>t.status==='Awaiting route').length)nexts.push([`${T.filter(t=>t.status==='Awaiting route').length} task(s) waiting for a route`,'routes']);
   if(pages.includes('requests'))nexts.push(['Create a new request','requests']);
   const recent=[...R].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,8);
-  return ph('dashboard','Where every order stands right now, from request to stock.')+`
+  return ph('dashboard',scopeOwn()?'Your own orders only: the ones you created or that are assigned to you.':'Where every order stands right now, from request to stock.')+`
   <div class="stats">
     <div class="stat"><b>${R.length}</b><span>Total requests</span></div>
     <div class="stat"><b>${c('New')}</b><span>New, to prepare</span></div>
@@ -1509,7 +1521,7 @@ function reportData(){
   const okGov=ref=>{if(!f.gov)return true;const r=reqOf(ref);return r&&r.govId===f.gov};
   const pid=ui.project;const ids=isAll()?myProjIds():[pid];
   const D={};
-  D.activity={cols:['When','User','Action','Reference','Status','Detail'],rows:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[fmtT(l.at),l.by,l.action,l.ref?H(refTag(l.ref)):'',l.status?H(st(l.status)):'',l.detail]),csv:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[l.at,l.by,l.action,l.ref,l.status,l.detail])};
+  D.activity={cols:['When','User','Action','Reference','Status','Detail'],rows:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&(!scopeOwn()||visLog(l))&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[fmtT(l.at),l.by,l.action,l.ref?H(refTag(l.ref)):'',l.status?H(st(l.status)):'',l.detail]),csv:state.log.filter(l=>(ids.includes(l.projectId)||!l.projectId)&&(!scopeOwn()||visLog(l))&&inRange(l.at)&&okRef(l.ref)&&okType(l.ref)&&okGov(l.ref)&&okUser(l.by)&&okSt(l.status)).slice().reverse().map(l=>[l.at,l.by,l.action,l.ref,l.status,l.detail])};
   const R=P(state.requests).filter(r=>inRange(r.createdAt)&&okRef(r.ref)&&okGov(r.ref)&&(!f.type||r.type===f.type)&&okUser(r.createdBy)&&okSt(r.status)).slice().reverse();
   D.requests={cols:['Reference','Type','Governorate','Customer ID','Customer or destination','Products','Status','Created by','Created','Prepared by','Completed'],rows:R.map(r=>[H(refTag(r.ref)),r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),H(st(r.status)),r.createdBy,fmtT(r.createdAt),r.preparedBy||'',fmtT(r.completedAt)]),csv:R.map(r=>[r.ref,r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),r.status,r.createdBy,r.createdAt,r.preparedBy||'',r.completedAt||''])};
   const T=P(state.tasks).filter(t=>inRange(t.createdAt)&&okRef(t.ref)&&okType(t.ref)&&okGov(t.ref)&&okUser(t.createdBy)&&okSt(t.status)).slice().reverse();
@@ -1521,13 +1533,14 @@ function reportData(){
   D.sales={cols:['Sale','Reference','Date','Customer','Agent','Recorded by','Status','Total'],rows:S2.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)),fmtD(x.date),custLabel(find(state.customers,x.customerId)),nm(state.agents,x.agentId),x.recordedBy,H(st('Recorded')),{h:money(x.total)}]),csv:S2.map(x=>[x.id,x.ref,x.date,custLabel(find(state.customers,x.customerId)),nm(state.agents,x.agentId),x.recordedBy,'Recorded',x.total])};
   const M=P(state.movements).filter(m=>inRange(m.at)&&okRef(m.ref)&&okGov(m.ref)&&(!f.type||m.type===f.type)&&okUser(m.by)&&!f.status).slice().reverse();
   D.movements={cols:['Movement','Reference','When','Type','Product','Batch','Quantity','From','To','By'],rows:M.map(m=>[H(`<span class="code">${esc(m.id)}</span>`),m.ref==='OPENING'?'Opening':H(refTag(m.ref)),fmtT(m.at),m.type,nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),locName(state,m.from),locName(state,m.to),m.by]),csv:M.map(m=>[m.id,m.ref,m.at,m.type,nm(state.products,m.productId),batchNo(state,m.batchId),m.qty,locName(state,m.from),locName(state,m.to),m.by])};
-  const U=state.users.filter(x=>(x.role==='admin'||(x.projects||[]).some(id=>ids.includes(id)))&&okUser(x.username)&&(!f.status||f.status===(x.active?'Active':'Inactive')));
+  const U=state.users.filter(x=>(!scopeOwn()||x.id===me().id)&&(x.role==='admin'||(x.projects||[]).some(id=>ids.includes(id))||(x.projects||[]).includes('__all'))&&okUser(x.username)&&(!f.status||f.status===(x.active?'Active':'Inactive')));
   const lastSeen=un=>{for(let i=state.log.length-1;i>=0;i--)if(state.log[i].by===un)return state.log[i].at;return ''};
   D.users={cols:['Username','Name','Role','Projects','Last activity','Status'],rows:U.map(x=>[x.username,x.name,ROLES[x.role],(x.role==='admin'?state.projects:state.projects.filter(p=>(x.projects||[]).includes(p.id))).map(p=>p.code).join(', '),fmtT(lastSeen(x.username)),H(st(x.active?'Active':'Inactive'))]),csv:U.map(x=>[x.username,x.name,ROLES[x.role],(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).join(' '),lastSeen(x.username),x.active?'Active':'Inactive'])};
   return D;
 }
 
 function traceView(ref){
+  if(scopeOwn()&&!visRef(ref))return `<div class="panel"><div class="spread"><h2>Trace</h2><button class="btn plain sm" data-act="clearTrace">Close</button></div><p class="err" style="margin-top:8px">${esc(ref)} is not one of your orders, so it can't be shown.</p></div>`;
   const r=state.requests.find(x=>x.ref===ref);
   const ds=!r&&state.sales.find(x=>x.ref===ref&&x.direct);
   if(ds){const mv=state.movements.filter(m=>m.ref===ref),lg=state.log.filter(l=>l.ref===ref);
@@ -1588,13 +1601,14 @@ function userFields(x,isNew){
     ${isNew?`<label>Username<input name="username" required autocapitalize="none" pattern="[A-Za-z0-9._\-]+" title="Letters, numbers, dot, dash or underscore"></label>`:''}
     <label>${isNew?'Password':'New password'}<input name="password" type="password" ${isNew?'required minlength="6"':'minlength="6" placeholder="Leave blank to keep"'} autocomplete="new-password"></label>
     <label>Role<select name="role" data-chg="userRole">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${k===role?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label>Records this user sees<select name="scope"><option value="all" ${(x&&x.scope)!=='own'?'selected':''}>All records in their projects</option><option value="own" ${(x&&x.scope)==='own'?'selected':''}>Only their own: created by or assigned to them</option></select><span class="small muted" style="font-weight:400">Administrators always see everything.</span></label>
   </div>
   <fieldset style="margin-top:12px"><legend>Projects this user can see</legend><div class="checks"><label><input type="checkbox" name="projects" value="__all" ${(projs||[]).includes('__all')?'checked':''}><strong>All projects, including new ones</strong></label>${state.projects.map(p=>`<label><input type="checkbox" name="projects" value="${p.id}" ${(projs||[]).includes(p.id)?'checked':''}>${esc(p.code)}: ${esc(p.name)}</label>`).join('')||'<span class="muted small">Create a project first.</span>'}</div></fieldset>
   <fieldset style="margin-top:10px"><legend>Pages this user can open (set by role, adjust if needed)</legend><div class="checks">${PAGES.map(p=>`<label><input type="checkbox" name="pages" value="${p[0]}" ${(pages||[]).includes(p[0])?'checked':''}>${esc(p[1])}</label>`).join('')}</div></fieldset>`;
 }
 
 function pgUsers(u){
-  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,ROLES[x.role],(x.role==='admin'||(x.projects||[]).includes('__all'))?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${FB&&!x.fbUid?`<button class="btn sm" data-act="fbSetupLogin" data-id="${x.id}">Set up login</button>`:''}${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
+  const rows=state.users.map(x=>{const row=[H(`<strong>${esc(x.username)}</strong>`),x.name,H(esc(ROLES[x.role])+(x.scope==='own'&&x.role!=='admin'?'<br><span class="small" style="color:var(--warn);font-weight:700">Own records only</span>':'')),(x.role==='admin'||(x.projects||[]).includes('__all'))?'All':(x.projects||[]).map(id=>(find(state.projects,id)||{}).code).filter(Boolean).join(', '),String((x.pages||[]).length),H(st(x.active?'Active':'Inactive')),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${x.id}">Edit</button>${FB&&!x.fbUid?`<button class="btn sm" data-act="fbSetupLogin" data-id="${x.id}">Set up login</button>`:''}${x.id!==u.id?`<button class="btn plain sm" data-act="toggleUser" data-id="${x.id}">${x.active?'Deactivate':'Activate'}</button>`:''}</div>`)];
     if(ui.expand===x.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="userEdit" data-id="${x.id}">${userFields(x,false)}<div class="row" style="margin-top:12px"><button class="btn" type="submit">Save changes</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('users','The administrator creates every login and decides which projects and pages each person can see.')+`
@@ -1737,11 +1751,11 @@ const forms={
       let uid;try{uid=await fbCreateLogin(un,pw)}catch(e){toast(fbErr(e),'bad');return}
       const role=fd.get('role');
       try{await fbDoc('access',uid).set({username:un,role,active:true})}catch(e){toast(fbErr(e),'bad');return}
-      await act(s=>{s.users.push({id:rid('u'),username:un,name:String(fd.get('name')).trim(),role,projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,fbUid:uid,createdAt:now()});log(s,'User created',null,un+', '+ROLES[role],'Active',null,null)},'User created. Share the username and password with them.');
+      await act(s=>{s.users.push({id:rid('u'),username:un,name:String(fd.get('name')).trim(),role,scope:fd.get('scope')||'all',projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,fbUid:uid,createdAt:now()});log(s,'User created',null,un+', '+ROLES[role],'Active',null,null)},'User created. Share the username and password with them.');
       return;
     }
     const h=await hashPw(un,String(fd.get('password')));
-    act(s=>{const x={id:rid('u'),username:un,name:String(fd.get('name')).trim(),role:fd.get('role'),projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,hash:h,createdAt:now()};
+    act(s=>{const x={id:rid('u'),username:un,name:String(fd.get('name')).trim(),role:fd.get('role'),scope:fd.get('scope')||'all',projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,hash:h,createdAt:now()};
       if(!x.pages.length)throw new Error('Give the user at least one page.');
       s.users.push(x);log(s,'User created',null,x.username+', '+ROLES[x.role],'Active',null,null)},'User created. Share the username and password with them.');
   })()},
@@ -1750,7 +1764,7 @@ const forms={
     if(FB&&pw){if(x0.id!==me().id){toast('In the online version only the user can change their own password (Change password at the top). For a forgotten password, deactivate this user and create a new username.','bad');return}
       try{await FB.auth.currentUser.updatePassword(pw)}catch(e){toast(fbErr(e),'bad');return}}
     const h=(!FB&&pw)?await hashPw(x0.username,pw):null;
-    await act(s=>{const x=find(s.users,f.dataset.id);x.name=String(fd.get('name')).trim();x.role=fd.get('role');x.projects=fd.getAll('projects');x.pages=fd.getAll('pages');if(h)x.hash=h;
+    await act(s=>{const x=find(s.users,f.dataset.id);x.name=String(fd.get('name')).trim();x.role=fd.get('role');x.scope=fd.get('scope')||'all';x.projects=fd.getAll('projects');x.pages=fd.getAll('pages');if(h)x.hash=h;
       if(!x.pages.length)throw new Error('Give the user at least one page.');
       if(x.id===me().id&&!x.pages.includes('users'))throw new Error('Keep the Users and access page on your own account.');
       log(s,'User updated',null,x.username+((h||(FB&&pw))?', password changed':''),'',null,null);ui.expand=null},'User saved.');
