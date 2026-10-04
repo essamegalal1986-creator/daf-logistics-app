@@ -182,6 +182,8 @@ button.ref:hover{filter:brightness(.95)}
 .stop .pick{max-width:640px}
 .loadlist{border-bottom:1px solid var(--line);padding:10px 16px;background:var(--surface)}
 .loadlist summary{cursor:pointer;color:var(--route)}
+.reqnote{background:var(--warn-soft);border-left:3px solid var(--warn);border-radius:0 6px 6px 0;padding:6px 10px;margin:6px 0;font-size:14px;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.reqnote.compact{font-size:13px;padding:3px 8px;margin:4px 0 0}
 .abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
 .abar i{display:block;height:100%}
 .b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
@@ -523,6 +525,7 @@ function PS(){return P(state.products).slice().sort((a,b)=>String(a.name||'').lo
 function prodLabel(p){return p?p.name+' ('+[p.code,p.sku].filter(Boolean).join(' | ')+')':''}
 function prodByCode(code,list){const k=String(code||'').trim().toUpperCase();return k?(list||P(state.products)).find(p=>(p.code||'').toUpperCase()===k):null}
 function canEditReq(r){const u=me();return !!u&&(u.role==='admin'||u.role==='ops'||u.role==='lead'||r.createdBy===u.username)}
+function noteBox(r,compact){return r&&r.notes?`<div class="reqnote${compact?' compact':''}"><strong>Note:</strong> ${esc(r.notes)}</div>`:''}
 function reqDue(r,compact){if(!r||!r.reqDate)return compact?'':'<span class="muted small">Not set</span>';
   const open=!['Completed','Returned to stock'].includes(r.status);const late=open&&r.reqDate<today();const dueToday=open&&r.reqDate===today();
   return `<span style="white-space:nowrap">${esc(fmtD(r.reqDate))}</span>${late?' <span class="st st-failed">Overdue</span>':dueToday?' <span class="st st-prepared">Due today</span>':''}`}
@@ -815,7 +818,7 @@ function routeMetro(rt){
   const w=n=>stops.length?(100*n/stops.length).toFixed(1)+'%':'0';
   const nodes=[`<li class="mnode endpt start"><span class="mdot" aria-hidden="true">GO</span><div class="mlbl"><strong>Start</strong><span class="muted">${esc(ag.vehicle||'Departure')}</span></div></li>`];
   stops.forEach((x,i)=>{const c=x.r.customerId&&find(state.customers,x.r.customerId);const icon=x.t.status==='Completed'?'✓':x.t.status==='Failed'?'✕':String(i+1);
-    nodes.push(`<li class="mnode s-${slug(x.t.status)} ${moved(x)?'trav':''}"><span class="mdot" aria-hidden="true">${icon}</span><div class="mlbl"><span class="muted">Stop ${i+1}${c&&c.code?', '+esc(c.code):''}</span><strong>${esc(stopTitle(x.r))}</strong>${x.r.reqDate?`<span class="muted" style="font-size:11px">Req. ${esc(fmtD(x.r.reqDate))}</span>`:''}<span class="muted">${esc(govName(x.r.govId)||x.r.type)}</span>${refTag(x.r.ref)}${st(x.t.status==='Routed'?'Not started':x.t.status)}${x.t.failReason?`<span class="small" style="color:var(--bad)">${esc(x.t.failReason)}</span>`:''}</div></li>`)});
+    nodes.push(`<li class="mnode s-${slug(x.t.status)} ${moved(x)?'trav':''}"><span class="mdot" aria-hidden="true">${icon}</span><div class="mlbl"><span class="muted">Stop ${i+1}${c&&c.code?', '+esc(c.code):''}</span><strong>${esc(stopTitle(x.r))}</strong>${x.r.notes?`<span class="small" style="color:var(--warn);font-weight:700" title="${esc(x.r.notes)}">Has note</span>`:''}${x.r.reqDate?`<span class="muted" style="font-size:11px">Req. ${esc(fmtD(x.r.reqDate))}</span>`:''}<span class="muted">${esc(govName(x.r.govId)||x.r.type)}</span>${refTag(x.r.ref)}${st(x.t.status==='Routed'?'Not started':x.t.status)}${x.t.failReason?`<span class="small" style="color:var(--bad)">${esc(x.t.failReason)}</span>`:''}</div></li>`)});
   nodes.push(`<li class="mnode endpt finish ${allClosed?'trav done':''}"><span class="mdot" aria-hidden="true">${allClosed?'✓':'END'}</span><div class="mlbl"><strong>Finish</strong><span class="muted">${allClosed?'Route done':pend+' stop'+(pend===1?'':'s')+' left'}</span></div></li>`);
   return `<div class="rmap-route">
     <div class="rmap-head"><span class="code" style="font-size:15px">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.note?`<span>${esc(rt.note)}</span>`:''}
@@ -974,7 +977,7 @@ function pgProducts(u){
   const projs=myProjects(u);
   const canEdit=u.pages.includes('products');
   const rows=state.products.filter(p=>p.projectId===ALL||projs.some(x=>x.id===p.projectId)).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(p=>{const row=[H(`<span class="code">${esc(p.code||'')}</span>`),H(`<span class="code">${esc(p.sku)}</span>`),p.name,p.unit,{h:money(p.price)},p.projectId===ALL?'All projects':nm(state.projects,p.projectId),H(canEdit?`<button class="btn plain sm" data-act="expand" data-id="${p.id}">Edit</button>`:'')];
-    if(ui.expand===p.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="productEdit" data-id="${p.id}" class="fgrid"><label>Product ID<input name="code" required value="${esc(p.code||'')}"></label><label>SKU<input name="sku" required value="${esc(p.sku)}"></label><label>Product name<input name="name" required value="${esc(p.name)}"></label><label>Unit<input name="unit" required value="${esc(p.unit||'')}"></label><label>Unit price<input name="price" type="number" min="0" step="0.01" value="${Number(p.price)||0}"></label><div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+    if(ui.expand===p.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="productEdit" data-id="${p.id}" class="fgrid"><label>Product ID<input name="code" required value="${esc(p.code||'')}"></label><label>SKU<input name="sku" required value="${esc(p.sku)}"></label><label>Product name<input name="name" required value="${esc(p.name)}"></label><label>Unit<input name="unit" required value="${esc(p.unit||'')}"></label><label>Unit price<input name="price" type="number" min="0" step="0.01" value="${Number(p.price)||0}"></label>${(()=>{const bs=state.batches.filter(b=>b.productId===p.id);return bs.length?`<div style="grid-column:1/-1"><p class="small" style="font-weight:700;margin-bottom:6px">Batches: manufactured and expiry dates</p><div class="tbl"><table><thead><tr><th>Batch</th><th>Manufactured</th><th>Expiry</th></tr></thead><tbody>${bs.map(b=>`<tr><td class="code">${esc(b.batchNo)}</td><td><input type="date" name="bm_${b.id}" value="${esc(b.mfg||'')}" style="max-width:170px"></td><td><input type="date" name="be_${b.id}" value="${esc(b.expiry||'')}" style="max-width:170px"></td></tr>`).join('')}</tbody></table></div></div>`:''})()}<div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('products','Create each product and link it to its project.')+`
   ${importPanel()}
@@ -999,7 +1002,9 @@ function pgProducts(u){
 function pgBatches(){
   const B=P(state.batches).slice().sort((a,b)=>(nm(state.products,a.productId)).localeCompare(nm(state.products,b.productId))||(a.expiry||'').localeCompare(b.expiry||''));
   const soon=d=>d&&(new Date(d+'T00:00:00')-new Date())/864e5<60;
-  const rows=B.map(b=>{const tot=batchAvail(state,b.id);return [H(`<span class="code">${esc(b.batchNo)}</span>`),nm(state.products,b.productId),fmtD(b.mfg),H(b.expiry?`<span class="${soon(b.expiry)?'neg':''}">${esc(fmtD(b.expiry))}</span>`:''),String(tot),P(state.warehouses).map(w=>{const q=qty(state,'W:'+w.id,b.productId,b.id);return q?w.name+': '+q:''}).filter(Boolean).join(', ')]});
+  const rows=B.map(b=>{const tot=batchAvail(state,b.id);const row=[H(`<span class="code">${esc(b.batchNo)}</span>`),nm(state.products,b.productId),fmtD(b.mfg),H(b.expiry?`<span class="${soon(b.expiry)?'neg':''}">${esc(fmtD(b.expiry))}</span>`:'<span class="small" style="color:var(--warn);font-weight:700">No expiry</span>'),String(tot),projLocs(state,b.projectId).map(l=>{const q=qty(state,l[0],b.productId,b.id);return q?l[1]+': '+q:''}).filter(Boolean).join(', '),H(`<button class="btn plain sm" data-act="expand" data-id="${b.id}">Edit</button>`)];
+    if(ui.expand===b.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="batchEdit" data-id="${b.id}" class="fgrid"><label>Batch number<input name="batchNo" required value="${esc(b.batchNo)}"></label><label>Manufactured<input type="date" name="mfg" value="${esc(b.mfg||'')}"></label><label>Expiry<input type="date" name="expiry" value="${esc(b.expiry||'')}"></label><div class="row"><button class="btn" type="submit">Save batch</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+    return row});
   return `<h2 style="margin:26px 0 6px">Batches in ${esc(nm(state.projects,ui.project))}</h2>
   <p class="muted" style="margin-bottom:12px">Each product can hold several batches. Requests choose a batch per product, and stock is tracked per batch.</p>
   <div class="panel"><form data-form="batch" class="fgrid">
@@ -1009,7 +1014,7 @@ function pgBatches(){
     <label>Expiry<input name="expiry" type="date"></label>
     <button class="btn" type="submit">Add batch</button>
   </form></div>
-  ${table([{l:'Batch'},{l:'Product'},{l:'Manufactured'},{l:'Expiry'},{l:'In warehouses',num:1},{l:'Where'}],rows,'No batches yet. Add the first one above.')}`;
+  ${table([{l:'Batch'},{l:'Product'},{l:'Manufactured'},{l:'Expiry'},{l:'In stock',num:1},{l:'Where'},{l:''}],rows,'No batches yet. Add the first one above.')}`;
 }
 
 function pgSetup(u){
@@ -1089,7 +1094,7 @@ function pgRequests(u){
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
   return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
   ${isAll()&&!editR?allGate('create a request'):`<div class="panel" id="reqPanel"${editR?' style="border:2px solid var(--route)"':''}><div class="spread"><h2>${editR?'Edit request '+esc(editR.ref):'New request'}</h2>${editR?`<span class="small muted">Created by ${esc(editR.createdBy)}, ${fmtT(editR.createdAt)}</span>`:''}</div>
   <form data-form="request" class="stack" id="reqForm"${editR?` data-edit="${esc(editR.id)}"`:''}>
@@ -1149,7 +1154,7 @@ function preparePanel(r){
   }
   return `<tr class="expanded"><td colspan="7">${choice}<form data-form="prepare" data-id="${esc(r.id)}">
     ${r.type==='Transfer'?`<p style="margin-bottom:8px">Destination: <strong>${esc(locName(state,r.dest))}</strong></p>`:''}
-    ${r.notes?`<p class="muted small" style="margin-bottom:8px">Notes: ${esc(r.notes)}</p>`:''}
+    ${noteBox(r)}
     ${lines}
     <p class="muted small" style="margin-bottom:10px">${r.status==='Failed'?'Reassigning sends this request to a new route. If the agent completes it, stock is deducted and a sale is recorded. To cancel it and keep the stock, choose Back to stock above.':'The agent and date are set when you put this task on a route.'}</p>
     <div class="fgrid">
@@ -1160,7 +1165,7 @@ function preparePanel(r){
 function pgPrepare(u){
   if(!ui.project)return ph('prepare')+needProject();
   const R=P(state.requests).filter(r=>['New','Prepared','Failed'].includes(r.status));
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),partyText(state,r),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
   const locked=P(state.requests).filter(r=>['Routed','In transit'].includes(r.status)).length;
   return ph('prepare','Choose where the stock for each product comes from or goes to, a warehouse or a sales team member. This creates the task; the agent and date are set on the route.')+
   table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent and date'},{l:''}],rows,'Nothing to prepare. New requests from Operations appear here.')+
@@ -1196,7 +1201,7 @@ function stopBody(t,r){
   else if(r.type==='Transfer')where=`<strong>Transfer to ${esc(locName(state,r.dest))}</strong>${r.govId?`<br><span class="muted small">${esc(govName(r.govId))}</span>`:''}`;
   else where=`<strong>Receive stock</strong>${r.supplier?`<br><span class="muted small">From ${esc(r.supplier)}</span>`:''}`;
   const items=pickTable(r,true);
-  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
+  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${noteBox(r)}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
 }
 
 function tripEditPanel(rt){
@@ -1219,7 +1224,7 @@ function routeAddPanel(rt){
   const c=routeAddCandidates(rt);const g=rt.groupId?find(state.routeGroups,rt.groupId):null;
   return `<div style="padding:12px 16px;border-bottom:1px solid var(--line);background:var(--route-soft)">
     <strong>Add orders to ${esc(rt.name)}</strong><span class="muted small">. They get this trip's agent (${esc(nm(state.agents,rt.agentId))}) and date (${esc(fmtD(rt.date))}), and are added as the next stops.</span>
-    ${c.length?`<form data-form="routeAdd" data-id="${rt.id}" style="margin-top:8px">${c.map(x=>`<label style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:6px 0;border-bottom:1px solid var(--line)${x.out?';opacity:.55':''}"><input type="checkbox" name="task" value="${x.t.id}" ${x.out?'disabled':''}>${refTag(x.r.ref)}<span class="ty">${esc(x.r.type)}</span><span>${esc(partyText(state,x.r))}</span>${x.r.reqDate?`<span class="small">Requested ${reqDue(x.r,true)}</span>`:''}${x.out?`<span class="small neg">Not in group ${esc(g.name)}</span>`:''}</label>`).join('')}
+    ${c.length?`<form data-form="routeAdd" data-id="${rt.id}" style="margin-top:8px">${c.map(x=>`<label style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:6px 0;border-bottom:1px solid var(--line)${x.out?';opacity:.55':''}"><input type="checkbox" name="task" value="${x.t.id}" ${x.out?'disabled':''}>${refTag(x.r.ref)}<span class="ty">${esc(x.r.type)}</span><span>${esc(partyText(state,x.r))}${noteBox(x.r,true)}</span>${x.r.reqDate?`<span class="small">Requested ${reqDue(x.r,true)}</span>`:''}${x.out?`<span class="small neg">Not in group ${esc(g.name)}</span>`:''}</label>`).join('')}
       <div class="row" style="margin-top:10px"><button class="btn" type="submit">Add selected orders</button></div></form>`
       :`<p class="muted small" style="margin-top:6px">No prepared orders are waiting for a trip${rt.projectId===ALL?'':' in this project'}. Prepare a request first, then add it here.</p>`}
   </div>`;
@@ -1243,7 +1248,7 @@ function pgRoutes(u){
   const ags=AG();
   const waiting=P(state.tasks).filter(t=>t.status==='Awaiting route');
   const sel='';
-  const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="small">${r.reqDate?'Requested '+reqDue(r,true):'<span class="muted">No requested date</span>'}</span></label>`}).join('');
+  const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}${noteBox(r,true)}</span><span class="small">${r.reqDate?'Requested '+reqDue(r,true):'<span class="muted">No requested date</span>'}</span></label>`}).join('');
   const rf=ui.routeF||{gov:'',group:''};
   const grpOf=id=>find(state.routeGroups,id);
   const routes=P(state.routes).filter(rt=>(!rf.group||rt.groupId===rf.group)&&(!rf.gov||routeGovs(rt).includes(rf.gov))).slice().reverse();
@@ -1589,6 +1594,7 @@ function traceView(ref){
     <div style="margin-bottom:14px">${chain(state,r)}</div>
     <div class="kv" style="margin-bottom:16px">
       <div><span>Requested date</span>${reqDue(r)}</div>
+      ${r.notes?`<div style="grid-column:1/-1"><span>Note</span>${noteBox(r)}</div>`:''}
       <div><span>Request</span>${esc(partyText(state,r))}<br><span>${r.items.length} product line${r.items.length===1?'':'s'}, ${r.items.reduce((a,it)=>a+Number(it.qty||0),0)} units</span></div>
       <div><span>Task</span>${t?`<span class="code">${esc(t.id)}</span><br>${t.agentId?esc(nm(state.agents,t.agentId))+', '+fmtD(t.date):'<span class="muted">Agent and date are set on the trip</span>'}<br>${st(t.status)}`:'Not prepared yet'}</div>
       <div><span>Route</span>${rt?`<span class="code">${esc(rt.name)}</span>${rt.note?' '+esc(rt.note):''}, ${fmtD(rt.date)}`:'Not routed yet'}</div>
@@ -1701,11 +1707,22 @@ const forms={
   gov(fd){act(s=>{const n=String(fd.get('name')).trim();if(s.govs.some(g=>g.name.toLowerCase()===n.toLowerCase()))throw new Error(n+' is already in the list.');s.govs.push({id:rid('gov'),name:n});log(s,'Governorate added',null,n,'',null,null)},'Governorate added.')},
   group(fd){act(s=>{const name=String(fd.get('name')).trim(),govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');if(s.routeGroups.some(g=>g.name.toLowerCase()===name.toLowerCase()))throw new Error('A group named '+name+' already exists.');s.routeGroups.push({id:rid('rg'),name,govIds,createdAt:now(),createdBy:cur()});log(s,'Route group created',null,name+': '+govIds.map(id=>nm(s.govs,id)).join(', '),'',null,null)},'Route group created.')},
   groupEdit(fd,f){act(s=>{const g=find(s.routeGroups,f.dataset.id);const govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');const nn=String(fd.get('name')).trim();if(s.routeGroups.some(x=>x.id!==g.id&&x.name.toLowerCase()===nn.toLowerCase()))throw new Error('A group named '+nn+' already exists.');g.name=nn;g.govIds=govIds;ui.expand=null;log(s,'Route group updated',null,g.name+': '+govIds.map(id=>nm(s.govs,id)).join(', '))},'Route group saved.')},
+  batchEdit(fd,f){act(s=>{const b=find(s.batches,f.dataset.id);if(!b)throw new Error('This batch no longer exists.');
+    const no=String(fd.get('batchNo')||'').trim().toUpperCase();if(!no)throw new Error('Enter the batch number.');
+    if(s.batches.some(x=>x.id!==b.id&&x.productId===b.productId&&x.batchNo===no))throw new Error('Batch '+no+' already exists for this product.');
+    const m=fd.get('mfg')||'',e=fd.get('expiry')||'';if(m&&e&&e<m)throw new Error('Expiry must be after the manufacturing date.');
+    const ch=[];if(no!==b.batchNo)ch.push('number '+b.batchNo+' to '+no);if(m!==(b.mfg||''))ch.push('manufactured '+(m||'none'));if(e!==(b.expiry||''))ch.push('expiry '+(e||'none'));
+    if(!ch.length)throw new Error('Nothing was changed.');
+    b.batchNo=no;b.mfg=m;b.expiry=e;ui.expand=null;log(s,'Batch updated',null,nm(s.products,b.productId)+', '+no+': '+ch.join(', '),'',null,b.projectId===ALL?null:b.projectId);
+  },'Batch saved.')},
   productEdit(fd,f){act(s=>{const p=find(s.products,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase(),sku=String(fd.get('sku')).trim().toUpperCase();
     if(!code||!sku)throw new Error('Product ID and SKU are required.');
     if(s.products.some(x=>x.id!==p.id&&(x.projectId===p.projectId||x.projectId===ALL||p.projectId===ALL)&&(x.code||'').toUpperCase()===code))throw new Error('Product ID '+code+' already exists in this project.');
     if(s.products.some(x=>x.id!==p.id&&x.projectId===p.projectId&&x.sku===sku))throw new Error('SKU '+sku+' already exists in this project.');
-    Object.assign(p,{code,sku,name:String(fd.get('name')).trim(),unit:String(fd.get('unit')).trim(),price:Number(fd.get('price'))||0});ui.expand=null;log(s,'Product updated',null,code+' '+sku+' '+p.name,'',null,p.projectId===ALL?null:p.projectId)},'Product saved.')},
+    Object.assign(p,{code,sku,name:String(fd.get('name')).trim(),unit:String(fd.get('unit')).trim(),price:Number(fd.get('price'))||0});
+    let nb=0;s.batches.filter(b=>b.productId===p.id).forEach(b=>{if(!fd.has('be_'+b.id))return;const m=fd.get('bm_'+b.id)||'',e=fd.get('be_'+b.id)||'';if(m&&e&&e<m)throw new Error('Batch '+b.batchNo+': expiry must be after the manufacturing date.');if(m!==(b.mfg||'')||e!==(b.expiry||'')){b.mfg=m;b.expiry=e;nb++}});
+    if(nb)log(s,'Batch dates updated',null,p.name+': '+nb+' batch(es)','',null,p.projectId===ALL?null:p.projectId);
+    ui.expand=null;log(s,'Product updated',null,code+' '+sku+' '+p.name,'',null,p.projectId===ALL?null:p.projectId)},'Product saved.')},
   customerEdit(fd,f){act(s=>{const c=find(s.customers,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(c.projectId===ALL||x.projectId===ALL||x.projectId===c.projectId)&&x.id!==c.id&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');Object.assign(c,{code,name:String(fd.get('name')).trim(),govId:fd.get('govId')||'',address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()});ui.expand=null;log(s,'Customer updated',null,code+' '+c.name)},'Customer saved.')},
   customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(ui.project===ALL||x.projectId===ALL||x.projectId===ui.project)&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:ui.project,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
   warehouse(fd){act(s=>{const w={id:rid('wh'),projectId:ui.project,name:String(fd.get('name')).trim(),location:String(fd.get('location')).trim()};s.warehouses.push(w);log(s,'Warehouse added',null,w.name)},'Warehouse added.')},
@@ -2058,7 +2075,7 @@ const acts={
     const c=find(state.customers,r.customerId)||{};
     const head=[['DAF Logistics App, order products'],['Reference',r.ref],['Type',r.type],['Status',r.status],['Project',projCode(r.projectId)+': '+nm(state.projects,r.projectId)],
       ['Customer ID',c.code||''],['Customer / destination',partyBase(state,r)],['Governorate',govName(r.govId)],['Created',fmtT(r.createdAt)+' by '+r.createdBy],
-      ['Requested date',r.reqDate||''],['Agent',t&&t.agentId?nm(state.agents,t.agentId):''],['Trip',t&&t.routeId?(find(state.routes,t.routeId)||{}).name||'':''],['Trip date',t&&t.date||''],[]];
+      ['Requested date',r.reqDate||''],['Note',r.notes||''],['Agent',t&&t.agentId?nm(state.agents,t.agentId):''],['Trip',t&&t.routeId?(find(state.routes,t.routeId)||{}).name||'':''],['Trip date',t&&t.date||''],[]];
     const rows=[['Product ID','SKU','Product name','Quantity','Unit','Batch','Expiry',pickHead(r)]];
     r.items.forEach(it=>{const p=find(state.products,it.productId)||{};const b=find(state.batches,it.batchId)||{};rows.push([p.code||'',p.sku||'',p.name||'',Number(it.qty),p.unit||'',b.batchNo||'',b.expiry||'',T.flow==='none'?'':(itemLoc(it)?locName(state,itemLoc(it)):'Not chosen yet')])});
     rows.push(['','','Total',r.items.reduce((a,it)=>a+Number(it.qty||0),0)]);
