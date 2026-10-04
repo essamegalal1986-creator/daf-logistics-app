@@ -1199,6 +1199,20 @@ function stopBody(t,r){
   return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
 }
 
+function tripEditPanel(rt){
+  const ts=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean);const moving=ts.filter(t=>t.status==='In transit');const done=ts.filter(t=>['Completed','Failed'].includes(t.status)).length;
+  const ags=AG().filter(a=>rt.projectId===ALL||a.projectId===ALL||a.projectId===rt.projectId||a.id===rt.agentId);
+  return `<div style="padding:12px 16px;border-bottom:1px solid var(--line);background:var(--route-soft)">
+    <strong>Edit ${esc(rt.name)}</strong>
+    <form data-form="tripEdit" data-id="${rt.id}" class="fgrid" style="margin-top:8px">
+      <label>Agent<select name="agent" ${moving.length?'disabled':''}>${opts(ags,rt.agentId,a=>a.name+(a.vehicle?', '+a.vehicle:''))}</select>${moving.length?`<span class="small neg" style="font-weight:400">Can't change while ${moving.length} stop${moving.length===1?' is':'s are'} in transit</span>`:''}</label>
+      <label>Trip date<input type="date" name="date" required value="${esc(rt.date)}"></label>
+      <label>Note<input name="note" value="${esc(rt.note||'')}"></label>
+      <div class="row"><button class="btn" type="submit">Save trip</button></div>
+    </form>
+    <p class="muted small" style="margin-top:6px">Changes apply to the stops that are not finished yet${done?`. ${done} finished stop${done===1?' keeps':'s keep'} the original agent and date for the record`:''}.</p>
+  </div>`;
+}
 function routeAddCandidates(rt){const g=rt.groupId?find(state.routeGroups,rt.groupId):null;
   return P(state.tasks).filter(t=>t.status==='Awaiting route'&&(rt.projectId===ALL||t.projectId===rt.projectId)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r).map(x=>({...x,out:!!g&&!g.govIds.includes(x.r.govId)}))}
 function routeAddPanel(rt){
@@ -1221,7 +1235,7 @@ function routeCard(rt,agentView){
         <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
     }
     return `<div class="stop ${t.status==='Completed'?'is-done':t.status==='Failed'?'is-failed':''}"><span class="stop-n">${i+1}</span><div>${stopBody(t,r)}${actions}</div></div>`}).join('');
-  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView&&s!=='Done'&&allowedPages(me()).includes('routes')?`<button class="btn sm ${ui.addTo===rt.id?'plain':'ghost'}" data-act="routeAddOpen" data-id="${rt.id}">${ui.addTo===rt.id?'Close':'Add orders'}</button>`:''}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${!agentView&&ui.addTo===rt.id?routeAddPanel(rt):''}${loadingList(rt)}${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
+  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView&&s!=='Done'&&allowedPages(me()).includes('routes')?`<button class="btn sm ${ui.editTrip===rt.id?'plain':'ghost'}" data-act="tripEditOpen" data-id="${rt.id}">${ui.editTrip===rt.id?'Close':'Edit trip'}</button>`:''}${!agentView&&s!=='Done'&&allowedPages(me()).includes('routes')?`<button class="btn sm ${ui.addTo===rt.id?'plain':'ghost'}" data-act="routeAddOpen" data-id="${rt.id}">${ui.addTo===rt.id?'Close':'Add orders'}</button>`:''}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${!agentView&&ui.editTrip===rt.id?tripEditPanel(rt):''}${!agentView&&ui.addTo===rt.id?routeAddPanel(rt):''}${loadingList(rt)}${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
 }
 
 function pgRoutes(u){
@@ -1915,6 +1929,20 @@ const forms={
       toastMsg='Direct order '+ref+' saved'+(nc?' and customer '+nc.code+' added':'')+'. Stock deducted and sale recorded.';
     },null);if(toastMsg){toast(toastMsg);toastMsg=''}
   },
+  tripEdit(fd,f){act(s=>{
+    const rt=find(s.routes,f.dataset.id);if(!rt)throw new Error('This trip no longer exists.');
+    const ts=rt.taskIds.map(id=>find(s.tasks,id)).filter(Boolean);const open=ts.filter(t=>['Routed','In transit'].includes(t.status));
+    if(ts.length&&!open.length)throw new Error('This trip is already finished, so it cannot be changed.');
+    const date=fd.get('date');if(!date)throw new Error('Choose the trip date.');
+    const agent=fd.get('agent')||rt.agentId;const note=String(fd.get('note')||'').trim();
+    if(agent!==rt.agentId&&open.some(t=>t.status==='In transit'))throw new Error('A stop on this trip is in transit, so the agent cannot be changed now.');
+    const ch=[];if(agent!==rt.agentId)ch.push('agent '+nm(s.agents,rt.agentId)+' to '+nm(s.agents,agent));if(date!==rt.date)ch.push('date '+rt.date+' to '+date);if(note!==(rt.note||''))ch.push('note updated');
+    if(!ch.length)throw new Error('Nothing was changed.');
+    rt.agentId=agent;rt.date=date;rt.note=note;rt.updatedAt=now();rt.updatedBy=cur();
+    open.forEach(t=>{t.agentId=agent;t.date=date;t.routeDate=date;if(ch.some(c=>!c.startsWith('note')))log(s,'Trip changed',t.ref,rt.name+': '+ch.filter(c=>!c.startsWith('note')).join(', '),t.status,null,t.projectId)});
+    log(s,'Trip updated',null,rt.name+': '+ch.join(', '),'',null,rt.projectId===ALL?null:rt.projectId);
+    ui.editTrip=null;toastMsg=rt.name+' updated: '+ch.join(', ')+'.';
+  },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   routeAdd(fd,f){act(s=>{
     const rt=find(s.routes,f.dataset.id);if(!rt)throw new Error('This trip no longer exists.');
     const ts=rt.taskIds.map(id=>find(s.tasks,id)).filter(Boolean);if(ts.length&&ts.every(t=>['Completed','Failed'].includes(t.status)))throw new Error('This trip is already finished. Create a new trip instead.');
@@ -1957,7 +1985,7 @@ function completeTask(s,t,r){
 
 /* ---------- Click handlers ---------- */
 const acts={
-  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.addTo=null;ui.pending=false;render();window.scrollTo(0,0)},
+  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.addTo=null;ui.editTrip=null;ui.pending=false;render();window.scrollTo(0,0)},
   async logout(){if(FB){if(me())await fbAct(s=>log(s,'Signed out',null,'','',undefined,null));ui.pwOpen=false;await FB.auth.signOut();return}act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
   myPwOpen(){ui.pwOpen=true;render()},
   myPwClose(){ui.pwOpen=false;render()},
@@ -2017,7 +2045,8 @@ const acts={
   closeModal(el,ev){closeModal()},
   reqEdit(el){ui.editReq=el.dataset.id;render();const pn=document.getElementById('reqPanel');if(pn&&pn.scrollIntoView)pn.scrollIntoView({block:'start'});else window.scrollTo(0,0)},
   reqEditCancel(){ui.editReq=null;render()},
-  routeAddOpen(el){ui.addTo=ui.addTo===el.dataset.id?null:el.dataset.id;render()},
+  tripEditOpen(el){ui.editTrip=ui.editTrip===el.dataset.id?null:el.dataset.id;ui.addTo=null;render()},
+  routeAddOpen(el){ui.editTrip=null;ui.addTo=ui.addTo===el.dataset.id?null:el.dataset.id;render()},
   reqNewOpen(){reqNewToggle(true)},
   reqNewCancel(){reqNewToggle(false);const f=document.getElementById('reqForm');const t=f.elements.custCode.value.trim();applyCustomer(f,custByCode(t),t)},
   soNewOpen(){soNewToggle(true)},
