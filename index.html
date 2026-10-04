@@ -1199,6 +1199,17 @@ function stopBody(t,r){
   return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${r.notes?`<p class="muted small" style="margin-top:4px">Notes: ${esc(r.notes)}</p>`:''}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
 }
 
+function routeAddCandidates(rt){const g=rt.groupId?find(state.routeGroups,rt.groupId):null;
+  return P(state.tasks).filter(t=>t.status==='Awaiting route'&&(rt.projectId===ALL||t.projectId===rt.projectId)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r).map(x=>({...x,out:!!g&&!g.govIds.includes(x.r.govId)}))}
+function routeAddPanel(rt){
+  const c=routeAddCandidates(rt);const g=rt.groupId?find(state.routeGroups,rt.groupId):null;
+  return `<div style="padding:12px 16px;border-bottom:1px solid var(--line);background:var(--route-soft)">
+    <strong>Add orders to ${esc(rt.name)}</strong><span class="muted small">. They get this trip's agent (${esc(nm(state.agents,rt.agentId))}) and date (${esc(fmtD(rt.date))}), and are added as the next stops.</span>
+    ${c.length?`<form data-form="routeAdd" data-id="${rt.id}" style="margin-top:8px">${c.map(x=>`<label style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:6px 0;border-bottom:1px solid var(--line)${x.out?';opacity:.55':''}"><input type="checkbox" name="task" value="${x.t.id}" ${x.out?'disabled':''}>${refTag(x.r.ref)}<span class="ty">${esc(x.r.type)}</span><span>${esc(partyText(state,x.r))}</span>${x.r.reqDate?`<span class="small">Requested ${reqDue(x.r,true)}</span>`:''}${x.out?`<span class="small neg">Not in group ${esc(g.name)}</span>`:''}</label>`).join('')}
+      <div class="row" style="margin-top:10px"><button class="btn" type="submit">Add selected orders</button></div></form>`
+      :`<p class="muted small" style="margin-top:6px">No prepared orders are waiting for a trip${rt.projectId===ALL?'':' in this project'}. Prepare a request first, then add it here.</p>`}
+  </div>`;
+}
 function routeCard(rt,agentView){
   const s=routeStatus(rt);
   const stops=rt.taskIds.map((id,i)=>{const t=find(state.tasks,id);if(!t||(!ownTrip(rt)&&!visTask(t)))return '';const r=find(state.requests,t.requestId);if(!r)return '';
@@ -1210,7 +1221,7 @@ function routeCard(rt,agentView){
         <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
     }
     return `<div class="stop ${t.status==='Completed'?'is-done':t.status==='Failed'?'is-failed':''}"><span class="stop-n">${i+1}</span><div>${stopBody(t,r)}${actions}</div></div>`}).join('');
-  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${loadingList(rt)}${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
+  return `<div class="route"><div class="route-h"><span class="code" style="font-size:18px">${esc(rt.name)}</span>${projTag(rt.projectId)}${!agentView&&s!=='Done'&&allowedPages(me()).includes('routes')?`<button class="btn sm ${ui.addTo===rt.id?'plain':'ghost'}" data-act="routeAddOpen" data-id="${rt.id}">${ui.addTo===rt.id?'Close':'Add orders'}</button>`:''}${!agentView?delBtn('route',rt.id):''}${rt.note?`<strong>${esc(rt.note)}</strong>`:''}<span>${fmtD(rt.date)}</span><span class="muted">${esc(nm(state.agents,rt.agentId))}</span>${st(s)}<span class="muted small" style="flex-basis:100%">${rt.groupId?'Group '+esc(nm(state.routeGroups,rt.groupId))+': ':'Governorates: '}${esc(routeGovs(rt).map(govName).join(', ')||'none')}</span></div>${!agentView&&ui.addTo===rt.id?routeAddPanel(rt):''}${loadingList(rt)}${stops||'<div class="empty">No stops on this route.</div>'}</div>`;
 }
 
 function pgRoutes(u){
@@ -1904,6 +1915,17 @@ const forms={
       toastMsg='Direct order '+ref+' saved'+(nc?' and customer '+nc.code+' added':'')+'. Stock deducted and sale recorded.';
     },null);if(toastMsg){toast(toastMsg);toastMsg=''}
   },
+  routeAdd(fd,f){act(s=>{
+    const rt=find(s.routes,f.dataset.id);if(!rt)throw new Error('This trip no longer exists.');
+    const ts=rt.taskIds.map(id=>find(s.tasks,id)).filter(Boolean);if(ts.length&&ts.every(t=>['Completed','Failed'].includes(t.status)))throw new Error('This trip is already finished. Create a new trip instead.');
+    const ids=fd.getAll('task');if(!ids.length)throw new Error('Tick at least one order to add.');
+    const g=rt.groupId?find(s.routeGroups,rt.groupId):null;
+    ids.forEach(id=>{const t=find(s.tasks,id);if(!t||t.status!=='Awaiting route')throw new Error((t?t.ref:'An order')+' is no longer waiting for a trip.');const r=find(s.requests,t.requestId);
+      if(g&&!g.govIds.includes(r.govId))throw new Error(t.ref+' is in '+(nm(s.govs,r.govId)||'no governorate')+', which is not part of group '+g.name+'.');
+      t.status='Routed';t.routeId=rt.id;t.routeDate=rt.date;t.agentId=rt.agentId;t.date=rt.date;r.status='Routed';rt.taskIds.push(t.id);
+      log(s,'Added to trip',t.ref,rt.name+' on '+rt.date+', stop '+rt.taskIds.length+', agent '+nm(s.agents,rt.agentId),'Routed',null,r.projectId)});
+    ui.addTo=null;toastMsg=ids.length+' order'+(ids.length===1?'':'s')+' added to '+rt.name+'.';
+  },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
 };
 let toastMsg='';
@@ -1935,7 +1957,7 @@ function completeTask(s,t,r){
 
 /* ---------- Click handlers ---------- */
 const acts={
-  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.pending=false;render();window.scrollTo(0,0)},
+  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.addTo=null;ui.pending=false;render();window.scrollTo(0,0)},
   async logout(){if(FB){if(me())await fbAct(s=>log(s,'Signed out',null,'','',undefined,null));ui.pwOpen=false;await FB.auth.signOut();return}act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
   myPwOpen(){ui.pwOpen=true;render()},
   myPwClose(){ui.pwOpen=false;render()},
@@ -1995,6 +2017,7 @@ const acts={
   closeModal(el,ev){closeModal()},
   reqEdit(el){ui.editReq=el.dataset.id;render();const pn=document.getElementById('reqPanel');if(pn&&pn.scrollIntoView)pn.scrollIntoView({block:'start'});else window.scrollTo(0,0)},
   reqEditCancel(){ui.editReq=null;render()},
+  routeAddOpen(el){ui.addTo=ui.addTo===el.dataset.id?null:el.dataset.id;render()},
   reqNewOpen(){reqNewToggle(true)},
   reqNewCancel(){reqNewToggle(false);const f=document.getElementById('reqForm');const t=f.elements.custCode.value.trim();applyCustomer(f,custByCode(t),t)},
   soNewOpen(){soNewToggle(true)},
