@@ -297,16 +297,17 @@ const PAGES=[
   ['mytasks','My tasks','7'],
   ['sales','Sales','8'],
   ['inventory','Inventory','9'],
+  ['movements','Product movement',''],
   ['stockcheck','Stock validation',''],
   ['report','Activity report','10'],
   ['users','Users and access','']
 ];
 const ROLE_PAGES={
   admin:PAGES.map(p=>p[0]),
-  ops:['dashboard','requests','sales','inventory','report'],
-  lead:['dashboard','prepare','routes','inventory','stockcheck','report'],
+  ops:['dashboard','requests','sales','inventory','movements','report'],
+  lead:['dashboard','prepare','routes','inventory','movements','stockcheck','report'],
   agent:['mytasks'],
-  viewer:['dashboard','sales','inventory','report']
+  viewer:['dashboard','sales','inventory','movements','report']
 };
 const TYPES={
   Delivery:{flow:'out',customer:true,wh:'Ship from',help:'Deducts stock from the selected warehouse or sales team member and records a sale on completion.'},
@@ -477,6 +478,7 @@ function migrate(s){
   if(!s.govs)s.govs=seedGovs();
   if(!s.routeGroups)s.routeGroups=[];
   if(!s.counts)s.counts=[];
+  if(!s.hasMovementsPage){(s.users||[]).forEach(u=>{if(['admin','ops','lead','viewer'].includes(u.role)&&u.pages&&!u.pages.includes('movements')&&u.pages.includes('inventory'))u.pages.push('movements')});s.hasMovementsPage=true}
   if(!s.hasStockCheckPage){(s.users||[]).forEach(u=>{if((u.role==='admin'||u.role==='lead')&&u.pages&&!u.pages.includes('stockcheck'))u.pages.push('stockcheck')});s.hasStockCheckPage=true}
   if(!s.sharedGroups){const keep={};const remap={};
     s.routeGroups.forEach(g=>{const k=g.name.trim().toLowerCase();if(keep[k]){keep[k].govIds=[...new Set([...keep[k].govIds,...g.govIds])];remap[g.id]=keep[k].id}else{keep[k]=g}});
@@ -790,7 +792,7 @@ function table(cols,rows,emptyMsg){
 const H=h=>({h});
 
 function page(u){
-  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,report:pgReport,users:pgUsers};
+  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,movements:pgMovements,report:pgReport,users:pgUsers};
   return map[ui.page](u);
 }
 
@@ -1482,6 +1484,44 @@ function openDeleteModal(kind,id){
 function closeModal(){document.getElementById('modal').innerHTML=''}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modal').innerHTML)closeModal()});
 
+/* ---------- Product movement ---------- */
+function mvLocKind(l){const k=(l||'').slice(0,1);return k==='W'?'Warehouse':k==='S'?'Sales team':k==='C'?'Customer':'Opening or supplier'}
+function mvData(){
+  const f=ui.mvf||(ui.mvf={from:dayStr(-30),to:today(),product:'',loc:'',dir:'any',type:''});
+  const rows=P(state.movements).filter(m=>{if(!/^ORD-/.test(m.ref||''))return false;const d=m.at.slice(0,10);
+    if(f.from&&d<f.from)return false;if(f.to&&d>f.to)return false;if(f.product&&m.productId!==f.product)return false;if(f.type&&m.type!==f.type)return false;
+    if(f.loc){if(f.dir==='from'&&m.from!==f.loc)return false;if(f.dir==='to'&&m.to!==f.loc)return false;if(f.dir==='any'&&m.from!==f.loc&&m.to!==f.loc)return false}
+    return true}).slice().sort((a,b)=>b.at.localeCompare(a.at));
+  const g={};rows.forEach(m=>{const k=m.productId+'|'+m.from+'|'+m.to;const x=g[k]||(g[k]={productId:m.productId,from:m.from,to:m.to,qty:0,n:0,last:''});x.qty+=Number(m.qty);x.n++;if(m.at>x.last)x.last=m.at});
+  const sum=Object.values(g).sort((a,b)=>nm(state.products,a.productId).localeCompare(nm(state.products,b.productId))||b.qty-a.qty);
+  return {f,rows,sum};
+}
+function pgMovements(u){
+  if(!ui.project)return ph('movements')+needProject();
+  const {f,rows,sum}=mvData();
+  const pids=isAll()?[...myProjIds(),ALL]:[ui.project];
+  const locs=pids.flatMap(pid=>projLocs(state,pid,isAll()).map(l=>[l[0],(isAll()?projCode(pid)+' ':'')+l[1],l[2]]));
+  const types=[...new Set(P(state.movements).filter(m=>/^ORD-/.test(m.ref||'')).map(m=>m.type))].sort();
+  const view=ui.mvView||'summary';
+  const pr=id=>find(state.products,id)||{};
+  const totalQty=rows.reduce((a,m)=>a+Number(m.qty),0);
+  const shown=rows.slice(0,300);
+  return ph('movements','Stock moved by requests, by product: from which warehouse or sales team member to which, filtered by date. Direct sales from the Sales tab, opening stock and stock counts are not included.')+`
+  <div class="panel"><div class="fgrid">
+    <label>From date<input type="date" data-chg="mvf" data-k="from" value="${esc(f.from)}"></label>
+    <label>To date<input type="date" data-chg="mvf" data-k="to" value="${esc(f.to)}"></label>
+    <label>Product<select data-chg="mvf" data-k="product"><option value="">All products</option>${PS().map(p=>`<option value="${p.id}" ${f.product===p.id?'selected':''}>${esc(prodLabel(p))}</option>`).join('')}</select></label>
+    <label>Location<select data-chg="mvf" data-k="loc"><option value="">All locations</option>${[['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const L=locs.filter(x=>x[2]===k);return L.length?`<optgroup label="${lb}">${L.map(x=>`<option value="${x[0]}" ${f.loc===x[0]?'selected':''}>${esc(x[1])}</option>`).join('')}</optgroup>`:''}).join('')}</select></label>
+    <label>Direction<select data-chg="mvf" data-k="dir" ${f.loc?'':'disabled'}><option value="any" ${f.dir==='any'?'selected':''}>In or out</option><option value="from" ${f.dir==='from'?'selected':''}>Out of this location</option><option value="to" ${f.dir==='to'?'selected':''}>Into this location</option></select></label>
+    <label>Movement type<select data-chg="mvf" data-k="type"><option value="">All types</option>${types.map(t=>`<option ${f.type===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>
+  </div>
+  <div class="row" style="margin-top:12px"><button class="btn plain sm" data-act="mvQuick" data-d="0">Today</button><button class="btn plain sm" data-act="mvQuick" data-d="6">Last 7 days</button><button class="btn plain sm" data-act="mvQuick" data-d="29">Last 30 days</button><button class="btn plain sm" data-act="mvQuick" data-d="-1">All dates</button><button class="btn plain sm" data-act="mvClear">Clear filters</button><button class="btn ghost sm" data-act="mvExport">Export to Excel</button></div></div>
+  <div class="stats"><div class="stat"><b>${rows.length}</b><span>Movements</span></div><div class="stat"><b>${totalQty}</b><span>Units moved</span></div><div class="stat"><b>${new Set(rows.map(m=>m.productId)).size}</b><span>Products</span></div><div class="stat"><b>${sum.length}</b><span>Routes (from → to)</span></div></div>
+  <div class="tabs" role="tablist"><button class="tab ${view==='summary'?'on':''}" role="tab" aria-selected="${view==='summary'}" data-act="mvView" data-v="summary">By product and route</button><button class="tab ${view==='detail'?'on':''}" role="tab" aria-selected="${view==='detail'}" data-act="mvView" data-v="detail">Every movement</button></div>
+  ${view==='summary'?table([{l:'Product ID'},{l:'Product'},{l:'From'},{l:''},{l:'To'},{l:'Quantity',num:1},{l:'Movements',num:1},{l:'Last'}],sum.map(x=>[H(`<span class="code">${esc(pr(x.productId).code||'')}</span>`),H(`<strong>${esc(pr(x.productId).name||'?')}</strong><br><span class="small muted">${esc(pr(x.productId).sku||'')}</span>`),H(`${esc(locName(state,x.from))}<br><span class="small muted">${mvLocKind(x.from)}</span>`),H('<span aria-hidden="true">→</span>'),H(`${esc(locName(state,x.to))}<br><span class="small muted">${mvLocKind(x.to)}</span>`),{h:`<strong>${x.qty}</strong>`},String(x.n),fmtT(x.last)]),'No movements match these filters.')
+  :table([{l:'When'},{l:'Reference'},{l:'Type'},{l:'Product ID'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'From'},{l:'To'},{l:'By'}],shown.map(m=>[fmtT(m.at),H(m.ref==='OPENING'?'<span class="muted">Opening</span>':refTag(m.ref)),m.type,H(`<span class="code">${esc(pr(m.productId).code||'')}</span>`),pr(m.productId).name||'',batchNo(state,m.batchId),String(m.qty),locName(state,m.from),locName(state,m.to),m.by]),'No movements match these filters.')+(rows.length>shown.length?`<p class="muted small" style="margin-top:8px">Showing the latest ${shown.length} of ${rows.length}. Narrow the dates or export to Excel to see all.</p>`:'')}`;
+}
+
 /* ---------- Stock validation ---------- */
 function scVarCell(v){return {h:`<strong style="color:${v===0?'var(--ok)':v<0?'var(--bad)':'var(--warn)'}">${v>0?'+':''}${v}</strong>`}}
 function scProductState(lines){
@@ -2134,6 +2174,18 @@ const acts={
       ui.imp=null;
     },null);if(toastMsg){toast(toastMsg);toastMsg=''}
   },
+  mvView(el){ui.mvView=el.dataset.v;render()},
+  mvClear(){ui.mvf=null;render()},
+  mvQuick(el){const d=Number(el.dataset.d);ui.mvf=ui.mvf||{};ui.mvf.from=d<0?'':dayStr(-d);ui.mvf.to=d<0?'':today();render()},
+  async mvExport(){
+    const {f,rows,sum}=mvData();const pr=id=>find(state.products,id)||{};
+    const info=[['DAF Logistics App, product movement'],['Project',isAll()?'All my projects':projCode(ui.project)+': '+nm(state.projects,ui.project)],['From date',f.from||'Any'],['To date',f.to||'Any'],['Product',f.product?prodLabel(pr(f.product)):'All products'],['Location',f.loc?locName(state,f.loc)+' ('+({any:'in or out',from:'out',to:'in'})[f.dir]+')':'All locations'],['Type',f.type||'All types'],['Exported',fmtT(now())+' by '+cur()]];
+    const s1=[['Product ID','SKU','Product','From','From type','To','To type','Quantity','Movements','Last movement']].concat(sum.map(x=>[pr(x.productId).code||'',pr(x.productId).sku||'',pr(x.productId).name||'',locName(state,x.from),mvLocKind(x.from),locName(state,x.to),mvLocKind(x.to),x.qty,x.n,x.last.slice(0,16).replace('T',' ')]));
+    const s2=[['Date','Time','Reference','Type','Product ID','SKU','Product','Batch','Quantity','From','To','By']].concat(rows.map(m=>{const d=new Date(m.at);return [m.at.slice(0,10),pad(d.getHours(),2)+':'+pad(d.getMinutes(),2),m.ref,m.type,pr(m.productId).code||'',pr(m.productId).sku||'',pr(m.productId).name||'',batchNo(state,m.batchId),Number(m.qty),locName(state,m.from),locName(state,m.to),m.by]}));
+    const base='daf-product-movement-'+(f.from||'start')+'-to-'+(f.to||today());
+    if(window.XLSX){const wb=XLSX.utils.book_new();[['By product and route',s1],['Every movement',s2],['Filters',info]].forEach(([n,r])=>{const ws=XLSX.utils.aoa_to_sheet(r);ws['!cols']=r[0].map((_,i)=>({wch:Math.min(40,Math.max(10,...r.map(x=>String(x[i]??'').length+2)))}));XLSX.utils.book_append_sheet(wb,ws,n)});await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
+    else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile(base+'.csv','\ufeff'+s2.map(r=>r.map(q).join(',')).join('\n'))}
+  },
   clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
@@ -2158,7 +2210,7 @@ const acts={
   }
 };
 const changes={
-  project(el){ui.imp=null;ui.editReq=null;ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
+  project(el){ui.imp=null;if(ui.mvf){ui.mvf.product='';ui.mvf.loc=''}ui.editReq=null;ui.project=el.value;ui.expand=null;ui.traceRef='';ui.inv=null;ui.sc=null;render()},
   reqType(el){
     const f=el.form,T=TYPES[el.value];
     f.querySelectorAll('.w-customer').forEach(x=>x.classList.toggle('hide',!T.customer));
@@ -2216,6 +2268,7 @@ const changes={
       msg.innerHTML=`<div class="note" style="margin-top:4px">${added.length?`<strong>${added.length} product line${added.length===1?'':'s'} added from ${esc(file.name)}.</strong> `:'<strong>No lines added.</strong> '}${need?`Choose the <strong>batch</strong> on ${need} line${need===1?'':'s'} (lines with only one batch were filled in for you).`:added.length?'All batches are filled in.':''}${bad.length?`<div class="err" style="margin-top:6px">${bad.join('<br>')}</div>`:''}</div>`;
       const first=[...document.querySelectorAll('#lines .line')].find(l=>l.querySelector('select[name=item_product]').value&&!l.querySelector('input[name=item_batch]').value.trim());if(first)first.querySelector('input[name=item_batch]').focus();
     };rd.readAsArrayBuffer(file)},
+  mvf(el){ui.mvf=ui.mvf||{};ui.mvf[el.dataset.k]=el.value;if(el.dataset.k==='loc'&&!el.value)ui.mvf.dir='any';render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
