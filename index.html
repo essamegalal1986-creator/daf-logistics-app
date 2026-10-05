@@ -1071,7 +1071,14 @@ function pgSetup(u){
       <label>Batch<select name="batch" required data-kind="Received">${batchOptions(state,'','Received')}</select></label>
       <label>Quantity<input name="qty" type="number" min="1" step="1" required></label>
       <button class="btn" type="submit">Add opening stock</button></form></div>`+
-      table([{l:'When'},{l:'Location'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'By'}],mv.map(m=>[fmtT(m.at),locName(state,m.to),nm(state.products,m.productId),batchNo(state,m.batchId),String(m.qty),m.by]),'No opening stock yet.');
+      table([{l:'When'},{l:'Location'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'By'},{l:''}],mv.map(m=>{const row=[H(fmtT(m.at)+(m.editedAt?`<br><span class="small muted">edited ${fmtT(m.editedAt)} by ${esc(m.editedBy)}</span>`:'')),locName(state,m.to),H(esc(nm(state.products,m.productId))+((find(state.products,m.productId)||{}).code?`<br><span class="small muted">${esc(find(state.products,m.productId).code)}</span>`:'')),batchNo(state,m.batchId),String(m.qty),m.by,H(`<button class="btn plain sm" data-act="expand" data-id="${m.id}">Edit</button>`)];
+        if(ui.expand===m.id){const locs=projLocs(state,(find(state.products,m.productId)||{}).projectId||ui.project);row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="openingEdit" data-id="${m.id}" class="fgrid">
+          <label>Location<select name="loc" required>${[['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const L=locs.filter(x=>x[2]===k);return L.length?`<optgroup label="${lb}">${L.map(x=>`<option value="${x[0]}" ${x[0]===m.to?'selected':''}>${esc(x[1])}</option>`).join('')}</optgroup>`:''}).join('')}</select></label>
+          <label>Product<input value="${esc(prodLabel(find(state.products,m.productId)))}" disabled></label>
+          <label>Batch<select name="batch" required>${batchesFor(state,m.productId).map(b=>`<option value="${b.id}" ${b.id===m.batchId?'selected':''}>${esc(b.batchNo)}</option>`).join('')}</select></label>
+          <label>Quantity<input name="qty" type="number" min="0" step="1" required value="${m.qty}"><span class="small muted" style="font-weight:400">Enter 0 to remove this entry</span></label>
+          <div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+        return row}),'No opening stock yet.');
   }
   if(false)body=body.replace(/^<div class="panel">[\s\S]*?<\/form><\/div>/,allGate('add or change '+(tabs.find(x=>x[0]===t)||['',''])[1].toLowerCase()));
   return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+(isAll()&&!['govs','groups','opening'].includes(t)?'<p class="note" style="margin-bottom:14px">You are in <strong>All my projects</strong>. What you add here is <strong>shared by every project</strong>, marked ALL.</p>':'')+
@@ -1719,6 +1726,21 @@ const forms={
     if(!ch.length)throw new Error('Nothing was changed.');
     b.batchNo=no;b.mfg=m;b.expiry=e;ui.expand=null;log(s,'Batch updated',null,nm(s.products,b.productId)+', '+no+': '+ch.join(', '),'',null,b.projectId===ALL?null:b.projectId);
   },'Batch saved.')},
+  openingEdit(fd,f){act(s=>{
+    const m=find(s.movements,f.dataset.id);if(!m||m.ref!=='OPENING')throw new Error('This opening stock entry no longer exists.');
+    const loc=fd.get('loc'),bid=fd.get('batch'),q=Math.floor(Number(fd.get('qty')));
+    if(!loc||!bid)throw new Error('Choose the location and batch.');if(!(q>=0))throw new Error('Enter a quantity of 0 or more.');
+    if(loc===m.to&&bid===m.batchId&&q===m.qty)throw new Error('Nothing was changed.');
+    /* take the old amount out, then put the new amount in; stock that has already been used cannot be taken back */
+    const have=qty(s,m.to,m.productId,m.batchId);
+    const back=(loc===m.to&&bid===m.batchId)?Math.max(0,m.qty-q):m.qty;
+    if(have<back)throw new Error(`Only ${have} of ${nm(s.products,m.productId)} batch ${batchNo(s,m.batchId)} are left in ${locName(s,m.to)}; the rest has already been used. You can reduce this entry by ${have} at most.`);
+    const before=m.qty+' × '+batchNo(s,m.batchId)+' in '+locName(s,m.to);
+    adj(s,m.to,m.productId,m.batchId,-m.qty);adj(s,loc,m.productId,bid,q);
+    const after=q+' × '+batchNo(s,bid)+' in '+locName(s,loc);
+    if(q===0){s.movements=s.movements.filter(x=>x.id!==m.id)}else{m.qty=q;m.to=loc;m.batchId=bid;m.editedAt=now();m.editedBy=cur()}
+    ui.expand=null;log(s,q===0?'Opening stock removed':'Opening stock updated',null,nm(s.products,m.productId)+': '+before+(q===0?'':' changed to '+after),'',null,m.projectId===ALL?null:m.projectId);
+  },'Opening stock updated.')},
   productEdit(fd,f){act(s=>{const p=find(s.products,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase(),sku=String(fd.get('sku')).trim().toUpperCase();
     if(!code||!sku)throw new Error('Product ID and SKU are required.');
     if(s.products.some(x=>x.id!==p.id&&(x.projectId===p.projectId||x.projectId===ALL||p.projectId===ALL)&&(x.code||'').toUpperCase()===code))throw new Error('Product ID '+code+' already exists in this project.');
