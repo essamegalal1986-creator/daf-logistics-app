@@ -652,7 +652,7 @@ function act(fn,okMsg){
 }
 function softRender(){
   const a=document.activeElement;
-  if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)&&a.closest('.main')){ui.pending=true;const b=document.getElementById('pending');if(b)b.classList.remove('hide');return}
+  if(ui.dirty||(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)&&a.closest('.main'))){ui.pending=true;const b=document.getElementById('pending');if(b)b.classList.remove('hide');return}
   ui.pending=false;render();
 }
 let toastTimer=null;
@@ -688,6 +688,7 @@ function myAgentIds(u){return state.agents.filter(a=>a.userId===u.id).map(a=>a.i
 
 /* ---------- Render ---------- */
 function render(){
+  ui.dirty=false;ui.pending=false;
   const root=document.getElementById('app');
   if(!state){root.innerHTML='<div class="login"><p class="muted">Loading…</p></div>';return}
   const u=me();
@@ -701,6 +702,7 @@ function render(){
   try{if(ui.project)localStorage.setItem('waybill-lastproj-'+u.id,ui.project)}catch(e){}
   root.innerHTML=shell(u,pages,projs);
   if(ui.page==='requests'&&ui.editReq)fillReqEdit();
+  if(ui.page==='sales')soTotal();
 }
 
 function loginView(){
@@ -772,7 +774,7 @@ function shell(u,pages,projs){
     <div class="layout"><nav class="nav" aria-label="Pages">${nav}</nav>
     <main class="main">
       ${FB&&ui.pwOpen?`<div class="panel"><h2>Change my password</h2><form data-form="myPw" class="fgrid" novalidate style="margin-top:10px"><label>New password<input type="password" name="p1" autocomplete="new-password"></label><label>Confirm new password<input type="password" name="p2" autocomplete="new-password"></label><div class="row"><button class="btn" type="submit">Save password</button><button type="button" class="btn plain" data-act="myPwClose">Cancel</button></div><p class="err form-err hide" style="grid-column:1/-1"></p></form></div>`:''}
-      <div id="pending" class="banner ${ui.pending?'':'hide'}"><span>Another user changed the data.</span><button class="btn sm" data-act="refresh">Show latest</button></div>
+      <div id="pending" class="banner hide"><span>Another user changed the data. Your form is kept; the latest data loads after you save, or now if you choose.</span><button class="btn sm" data-act="refresh" title="Reloads the page data. Anything not saved in the form is cleared.">Show latest (clears this form)</button></div>
       ${page(u)}
     </main></div>`;
 }
@@ -1295,7 +1297,7 @@ function pgMyTasks(u){
 function soLine(){
   return `<div class="soline"><label>Product ID<input name="so_pcode" data-inp="sopcode" list="sopcodes" placeholder="Type ID" autocomplete="off" spellcheck="false"><span class="sohint small muted" aria-live="polite"></span></label><label>Product<select name="so_product" data-chg="soProduct"><option value="">Choose product</option>${PS().map(p=>`<option value="${p.id}">${esc(prodLabel(p))}</option>`).join('')}</select></label>
     <label>Batch<select name="so_batch" data-chg="soBatch" disabled><option value="">Choose product first</option></select></label>
-    <label>Deduct from<select name="so_loc" data-chg="soLoc" disabled><option value="">Choose batch first</option></select></label>
+    <label>Deduct from<select name="so_loc" data-chg="soLoc" disabled><option value="">Choose batch first</option></select><span class="solochint small" style="font-weight:400"></span></label>
     <label>Quantity<input name="so_qty" type="number" min="1" step="1" data-inp="soCalc"></label>
     <label>Unit price<input name="so_price" type="number" min="0" step="0.01" data-inp="soCalc"></label>
     <button type="button" class="btn plain sm" data-act="soRm" style="margin-top:22px">Remove</button></div>`;
@@ -1317,6 +1319,7 @@ function pgSales(u){
         <label>Order date<input type="date" name="date" value="${today()}"></label>
       </div>
       <div id="soCard"></div>
+      <label style="max-width:460px">Deduct the whole order from<select name="soAllLoc" data-chg="soAll"><option value="">Choose for each product line</option>${(()=>{const L=projLocs(state,ui.project);return [['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const x=L.filter(y=>y[2]===k);return x.length?`<optgroup label="${lb}">${x.map(y=>`<option value="${y[0]}">${esc(y[1])}</option>`).join('')}</optgroup>`:''}).join('')})()}</select><span class="small muted" style="font-weight:400">Optional. Sets every line to this location; you can still change a single line.</span></label>
       <div id="soNew" class="panel hide" style="background:var(--sunk);margin:0">
         <div class="spread" style="margin-bottom:8px"><strong>New customer</strong><button type="button" class="btn plain sm" data-act="soNewCancel">Cancel new customer</button></div>
         <p class="muted small" style="margin-bottom:10px">Saved to the customer list of this project together with the order. The Customer ID and Governorate are taken from the fields above.</p>
@@ -1325,7 +1328,7 @@ function pgSales(u){
       <datalist id="sopcodes">${PS().map(p=>`<option value="${esc(p.code||'')}">${esc(p.name)}</option>`).join('')}</datalist>
       <div id="soLines" class="stack">${soLine()}</div>
       <template id="soTpl">${soLine()}</template>
-      <div class="spread"><button type="button" class="btn ghost sm" data-act="soAdd">Add product line</button><strong id="soTotal">Total 0.00</strong></div>
+      <div class="spread"><button type="button" class="btn ghost sm" data-act="soAdd">Add product line</button><div id="soTotal" class="row" style="gap:16px"></div></div>
       <label>Note<input name="note" placeholder="Optional"></label>
       <p class="err form-err hide" role="alert"></p>
       <div><button class="btn" type="submit">Save direct order</button></div>
@@ -2159,8 +2162,9 @@ const changes={
   soBatch(el){const line=el.closest('.soline');const pid=line.querySelector('[name=so_product]').value,l=line.querySelector('[name=so_loc]');
     const ls=el.value?soLocsFor(pid,el.value):[];
     l.innerHTML=el.value?'<option value="">Choose warehouse or sales team</option>'+[['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const L=ls.filter(x=>x[2]===k);return L.length?`<optgroup label="${lb}">${L.map(x=>`<option value="${x[0]}">${esc(x[1])}, ${x[3]} in stock</option>`).join('')}</optgroup>`:''}).join(''):'<option value="">Choose batch first</option>';
-    l.disabled=!ls.length;if(ls.length===1)l.value=ls[0][0];soTotal()},
-  soLoc(){soTotal()},
+    l.disabled=!ls.length;if(ls.length===1)l.value=ls[0][0];soApplyAll(line);soTotal()},
+  soLoc(el){const h=el.closest('.soline').querySelector('.solochint');if(h)h.textContent='';soTotal()},
+  soAll(){document.querySelectorAll('#soForm .soline').forEach(soApplyAll);soTotal()},
   soCustSel(el){if(el.value)soNewToggle(false);const c=find(state.customers,el.value);el.form.elements.soCode.value=c?(c.code||''):'';if(c&&c.govId)el.form.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)},
   impFile(el){const file=el.files&&el.files[0];if(!file)return;
     if(!window.XLSX){toast('The Excel reader did not load. Check your internet connection and reload the page.','bad');el.value='';return}
@@ -2237,7 +2241,12 @@ function fillReqEdit(){
 }
 function reqNewToggle(on){const n=document.getElementById('reqNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('reqForm');if(on){f.elements.customerId.value='';document.getElementById('custCard').innerHTML='';(f.elements.custCode.value.trim()?f.elements.rnc_name:f.elements.custCode).focus()}}
 function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
-function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
+function soApplyAll(line){const f=document.getElementById('soForm');if(!f)return;const all=f.elements.soAllLoc.value;const l=line.querySelector('[name=so_loc]'),h=line.querySelector('.solochint'),b=line.querySelector('[name=so_batch]');
+  if(!all){if(h)h.textContent='';return}if(!b.value){if(h)h.textContent='';return}
+  if([...l.options].some(o=>o.value===all)){l.value=all;if(h){h.textContent=''}}else{l.value='';if(h){h.style.color='var(--bad)';h.textContent='No stock of this batch in '+locName(state,all)+'. Choose another location.'}}}
+function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0,q=0,n=0;f.querySelectorAll('.soline').forEach(l=>{const qq=Number(l.querySelector('[name=so_qty]').value)||0;if(l.querySelector('[name=so_product]').value)n++;q+=qq;t+=qq*(Number(l.querySelector('[name=so_price]').value)||0)});
+  document.getElementById('soTotal').innerHTML=`<span>Lines <strong>${n}</strong></span><span>Total quantity <strong>${q}</strong></span><span>Total <strong>${money(t)}</strong></span>`}
+function soTotalOld(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
 document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='sopcode'){const line=el.closest('.soline');const sel=line.querySelector('[name=so_product]');const p=prodByCode(el.value);
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.soProduct(sel);delete sel.dataset.fromCode;
     if(!p){const h=line.querySelector('.sohint');h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='opcode'){const f=el.form,sel=f.elements.product,h=f.querySelector('.ophint');const p=prodByCode(el.value);
@@ -2247,7 +2256,9 @@ document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.datase
     else{const keep=el.value;if(sel.value){sel.value='';changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color=keep.trim()?'var(--bad)':'';h.textContent=keep.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
   if(el.dataset&&el.dataset.inp==='soCust')return;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(!el)return;const h=changes[el.dataset.chg];if(h)h(el)});
-document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
+document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending&&!ui.dirty){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
+/* typing in any form marks it as being filled in, so background updates do not clear it */
+['input','change'].forEach(t=>document.addEventListener(t,e=>{const el=e.target;if(el&&el.closest&&el.closest('.main form')&&!el.closest('form[data-form="traceForm"]'))ui.dirty=true},true));
 new MutationObserver(()=>{const s=document.querySelector('select[data-chg="routeAgent"]');if(s&&!s.dataset.init){s.dataset.init='1';filterRouteTasks()}}).observe(document.getElementById('app'),{childList:true,subtree:true});
 
 window.addEventListener('error',e=>{try{toast('Unexpected error: '+(e.message||'unknown'),'bad')}catch(x){}});
