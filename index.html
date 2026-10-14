@@ -184,6 +184,17 @@ button.ref:hover{filter:brightness(.95)}
 .loadlist summary{cursor:pointer;color:var(--route)}
 .reqnote{background:var(--warn-soft);border-left:3px solid var(--warn);border-radius:0 6px 6px 0;padding:6px 10px;margin:6px 0;font-size:14px;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .reqnote.compact{font-size:13px;padding:3px 8px;margin:4px 0 0}
+.tk{border:1px solid var(--line);border-left:4px solid var(--route);border-radius:8px;background:var(--surface);padding:12px 14px;margin:10px 0}
+.tk.closed{border-left-color:var(--line);opacity:.85}
+.tk-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tk-title{font-size:15px}
+.tk-msgs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.tk-msgs li{padding:8px 10px;border-radius:8px;max-width:640px}
+.tk-msgs li.from-opener{background:var(--sunk);align-self:flex-start}
+.tk-msgs li.from-assignee{background:var(--route-soft);align-self:flex-end}
+.tk-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:2px}
+.st-open{color:var(--route);background:var(--route-soft)}
+.st-closed{color:var(--muted);background:var(--info-soft)}
 .abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
 .abar i{display:block;height:100%}
 .b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
@@ -299,15 +310,16 @@ const PAGES=[
   ['inventory','Inventory','9'],
   ['movements','Product movement',''],
   ['stockcheck','Stock validation',''],
+  ['tickets','Tickets',''],
   ['report','Activity report','10'],
   ['users','Users and access','']
 ];
 const ROLE_PAGES={
   admin:PAGES.map(p=>p[0]),
-  ops:['dashboard','requests','sales','inventory','movements','report'],
-  lead:['dashboard','prepare','routes','mytasks','inventory','movements','stockcheck','report'],
-  agent:['mytasks'],
-  viewer:['dashboard','sales','inventory','movements','report']
+  ops:['dashboard','requests','sales','inventory','movements','tickets','report'],
+  lead:['dashboard','prepare','routes','mytasks','inventory','movements','stockcheck','tickets','report'],
+  agent:['mytasks','tickets'],
+  viewer:['dashboard','sales','inventory','movements','tickets','report']
 };
 const TYPES={
   Delivery:{flow:'out',customer:true,wh:'Ship from',help:'Deducts stock from the selected warehouse or sales team member and records a sale on completion.'},
@@ -478,6 +490,8 @@ function migrate(s){
   if(!s.govs)s.govs=seedGovs();
   if(!s.routeGroups)s.routeGroups=[];
   if(!s.counts)s.counts=[];
+  if(!s.tickets)s.tickets=[];
+  if(!s.hasTicketsPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('tickets'))u.pages.push('tickets')});s.hasTicketsPage=true}
   if(!s.hasMovementsPage){(s.users||[]).forEach(u=>{if(['admin','ops','lead','viewer'].includes(u.role)&&u.pages&&!u.pages.includes('movements')&&u.pages.includes('inventory'))u.pages.push('movements')});s.hasMovementsPage=true}
   if(!s.leadMyTasks){(s.users||[]).forEach(u=>{if(u.role==='lead'&&u.pages&&!u.pages.includes('mytasks'))u.pages.push('mytasks')});s.leadMyTasks=true}
   if(!s.hasStockCheckPage){(s.users||[]).forEach(u=>{if((u.role==='admin'||u.role==='lead')&&u.pages&&!u.pages.includes('stockcheck'))u.pages.push('stockcheck')});s.hasStockCheckPage=true}
@@ -630,7 +644,7 @@ function fbBoot(){
         state=migrate(r.state||blank());state.rev=r.rev;
         const first=!FB.loaded;FB.loaded=true;
         const u=state.users.find(x=>x.fbUid===user.uid);session=u?{uid:u.id}:null;
-        if(first){ui.page=null;ui.project=null;render();if(me())fbAct(st=>log(st,'Signed in',null,me().name+', '+ROLES[me().role],'',me().username,null))}
+        if(first){ui.page=null;ui.project=null;ui.tkTab=null;ui.tkQ='';ui.tkNewOn=null;render();if(me())fbAct(st=>log(st,'Signed in',null,me().name+', '+ROLES[me().role],'',me().username,null))}
         else softRender();
       }catch(e){toast(fbErr(e),'bad')}
     },err=>{FB.denied=true;FB.loaded=true;render()});
@@ -774,6 +788,7 @@ function setupView(){
 }
 
 function navCount(page,u){
+  if(page==='tickets')return myTickets().filter(t=>t.status==='Open'&&tkNeedsMe(t)).length;
   if(!ui.project)return 0;
   if(page==='prepare')return P(state.requests).filter(r=>r.status==='New'||r.status==='Failed').length;
   if(page==='routes')return P(state.tasks).filter(t=>t.status==='Awaiting route').length;
@@ -808,7 +823,7 @@ function table(cols,rows,emptyMsg){
 const H=h=>({h});
 
 function page(u){
-  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,movements:pgMovements,report:pgReport,users:pgUsers};
+  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,tickets:pgTickets,movements:pgMovements,report:pgReport,users:pgUsers};
   return map[ui.page](u);
 }
 
@@ -1122,7 +1137,7 @@ function pgRequests(u){
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${(()=>{const n=state.tickets.filter(t=>t.ref===r.ref&&t.status==='Open'&&tkCanSee(t)).length;return `<button class="btn plain sm" data-act="tkGo" data-ref="${esc(r.ref)}" title="Tickets on this order">Ticket${n?` <span class="nav-c">${n}</span>`:''}</button>`})()}${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
   return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
   ${isAll()&&!editR?allGate('create a request'):`<div class="panel" id="reqPanel"${editR?' style="border:2px solid var(--route)"':''}><div class="spread"><h2>${editR?'Edit request '+esc(editR.ref):'New request'}</h2>${editR?`<span class="small muted">Created by ${esc(editR.createdBy)}, ${fmtT(editR.createdAt)}</span>`:''}</div>
   <form data-form="request" class="stack" id="reqForm"${editR?` data-edit="${esc(editR.id)}"`:''}>
@@ -1229,7 +1244,7 @@ function stopBody(t,r){
   else if(r.type==='Transfer')where=`<strong>Transfer to ${esc(locName(state,r.dest))}</strong>${r.govId?`<br><span class="muted small">${esc(govName(r.govId))}</span>`:''}`;
   else where=`<strong>Receive stock</strong>${r.supplier?`<br><span class="muted small">From ${esc(r.supplier)}</span>`:''}`;
   const items=pickTable(r,true);
-  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${noteBox(r)}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
+  return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status)}${waitBadge(r)}${allowedPages(me()).includes('tickets')?`<button class="btn plain sm" data-act="tkGo" data-ref="${esc(r.ref)}">Ticket${(()=>{const n=state.tickets.filter(x=>x.ref===r.ref&&x.status==='Open'&&tkCanSee(x)).length;return n?` <span class="nav-c">${n}</span>`:''})()}</button>`:''}</div><div style="margin-top:6px">${where}</div>${r.reqDate?`<p class="small" style="margin-top:4px">Requested delivery: ${reqDue(r,true)}</p>`:''}${items}${noteBox(r)}${t.failReason?`<p class="err" style="margin-top:4px">Failed: ${esc(t.failReason)}</p>`:''}`;
 }
 
 function tripEditPanel(rt){
@@ -1551,6 +1566,60 @@ function pgMovements(u){
   :table([{l:'When'},{l:'Reference'},{l:'Type'},{l:'Product ID'},{l:'Product'},{l:'Batch'},{l:'Quantity',num:1},{l:'From'},{l:'To'},{l:'By'}],shown.map(m=>[fmtT(m.at),H(m.ref==='OPENING'?'<span class="muted">Opening</span>':refTag(m.ref)),m.type,H(`<span class="code">${esc(pr(m.productId).code||'')}</span>`),pr(m.productId).name||'',batchNo(state,m.batchId),String(m.qty),locName(state,m.from),locName(state,m.to),m.by]),'No movements match these filters.')+(rows.length>shown.length?`<p class="muted small" style="margin-top:8px">Showing the latest ${shown.length} of ${rows.length}. Narrow the dates or export to Excel to see all.</p>`:'')}`;
 }
 
+/* ---------- Tickets (one conversation per order, assigned to one person) ---------- */
+function tkRefOk(ref){return state.requests.some(r=>r.ref===ref)||state.sales.some(x=>x.ref===ref&&x.direct)}
+function tkProj(ref){const r=state.requests.find(x=>x.ref===ref)||state.sales.find(x=>x.ref===ref);return r?r.projectId:''}
+function tkCanSee(t){const u=me();return !!u&&(u.role==='admin'||t.assigneeId===u.id||t.createdById===u.id)}
+function myTickets(){if(!state||!state.tickets)return [];return state.tickets.filter(tkCanSee)}
+function tkLast(t){return t.messages[t.messages.length-1]||{}}
+function tkNeedsMe(t){const u=me();if(!u)return false;const l=tkLast(t);return (t.assigneeId===u.id||t.createdById===u.id)&&l.byId!==u.id}
+function tkUserName(id){const u=find(state.users,id);return u?u.name:'Unknown user'}
+function tkAssignOpts(sel){const u=me();return state.users.filter(x=>x.active&&x.id!==u.id).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)} (${esc(ROLES[x.role]||x.role)})</option>`).join('')}
+function tkRefList(){const ids=myProjIds();return [...state.requests.filter(r=>ids.includes(r.projectId)).map(r=>[r.ref,partyText(state,r)]),...state.sales.filter(x=>x.direct&&ids.includes(x.projectId)).map(x=>[x.ref,custLabel(find(state.customers,x.customerId))])].reverse()}
+function tkNewForm(ref,fixed){
+  return `<form data-form="tkNew" class="stack" novalidate>
+    <div class="fgrid">
+      ${fixed?`<input type="hidden" name="ref" value="${esc(ref)}">`:`<label>Order reference<input name="ref" list="tkRefs" value="${esc(ref||'')}" placeholder="e.g. ORD-2026-0001" autocomplete="off" spellcheck="false" autocapitalize="characters"><datalist id="tkRefs">${tkRefList().map(([r,d])=>`<option value="${esc(r)}">${esc(d)}</option>`).join('')}</datalist></label>`}
+      <label>Assign to<select name="assignee"><option value="">Choose a person</option>${tkAssignOpts('')}</select></label>
+      <label style="grid-column:1/-1">Subject<input name="title" maxlength="120" placeholder="e.g. Customer asks to change delivery time"></label>
+    </div>
+    <label>Message<textarea name="text" rows="3" placeholder="Describe what you need"></textarea></label>
+    <p class="err form-err hide" role="alert"></p>
+    <div><button class="btn" type="submit">Open ticket</button></div>
+  </form>`;
+}
+function ticketCard(t,showRef){
+  const u=me();const mine=t.createdById===u.id;const isAs=t.assigneeId===u.id;const open=t.status==='Open';
+  const canReply=open&&(mine||isAs||u.role==='admin');
+  return `<div class="tk ${open?'':'closed'}" id="tk_${t.id}">
+    <div class="tk-h"><span class="code">${esc(t.id)}</span>${showRef?refTag(t.ref):''}<strong class="tk-title">${esc(t.title)}</strong>${st(t.status)}${open&&tkNeedsMe(t)?'<span class="st st-prepared">Needs your reply</span>':''}</div>
+    <p class="small muted" style="margin:2px 0 8px">Opened by <strong>${esc(tkUserName(t.createdById))}</strong> on ${fmtT(t.createdAt)}, assigned to <strong>${esc(tkUserName(t.assigneeId))}</strong>${t.closedAt?`. Closed by ${esc(tkUserName(t.closedById))} on ${fmtT(t.closedAt)}`:''}</p>
+    <ol class="tk-msgs">${t.messages.map(m=>`<li class="${m.byId===t.createdById?'from-opener':'from-assignee'}"><div class="small muted"><strong>${esc(tkUserName(m.byId))}</strong>, ${fmtT(m.at)}</div><div class="tk-text">${esc(m.text)}</div></li>`).join('')}</ol>
+    ${canReply?`<form data-form="tkReply" data-id="${t.id}" class="stack" style="margin-top:8px" novalidate><textarea name="text" rows="2" placeholder="Write a reply"></textarea><p class="err form-err hide"></p><div class="row"><button class="btn sm" type="submit">Send reply</button>${mine?`<button type="button" class="btn plain sm" data-act="tkClose" data-id="${t.id}">Close ticket</button>`:''}</div></form>`:''}
+    ${!open&&mine?`<div class="row" style="margin-top:8px"><button type="button" class="btn plain sm" data-act="tkReopen" data-id="${t.id}">Reopen ticket</button></div>`:''}
+    ${open&&!mine?`<p class="small muted" style="margin-top:6px">Only ${esc(tkUserName(t.createdById))}, who opened this ticket, can close it.</p>`:''}
+  </div>`;
+}
+function orderTickets(ref){
+  const all=state.tickets.filter(t=>t.ref===ref);const vis=all.filter(tkCanSee);const hidden=all.length-vis.length;
+  return `<div class="spread" style="margin-top:18px"><h3 style="margin-bottom:4px">Tickets on this order</h3>${allowedPages(me()).includes('tickets')?`<button class="btn ghost sm" data-act="tkToggleNew" data-ref="${esc(ref)}">${ui.tkNewOn===ref?'Cancel':'Open a ticket'}</button>`:''}</div>
+    ${ui.tkNewOn===ref?`<div class="panel" style="background:var(--sunk)">${tkNewForm(ref,true)}</div>`:''}
+    ${vis.length?vis.slice().reverse().map(t=>ticketCard(t,false)).join(''):`<p class="muted small">${all.length?'':'No tickets on this order.'}</p>`}
+    ${hidden?`<p class="muted small">${hidden} other ticket${hidden===1?'':'s'} on this order ${hidden===1?'is':'are'} between other people.</p>`:''}`;
+}
+function pgTickets(u){
+  const T=myTickets();const tab=ui.tkTab||'mine';
+  const lists={mine:T.filter(t=>t.assigneeId===u.id&&t.status==='Open'),opened:T.filter(t=>t.createdById===u.id&&t.status==='Open'),closed:T.filter(t=>(t.assigneeId===u.id||t.createdById===u.id)&&t.status==='Closed'),all:u.role==='admin'?state.tickets:[]};
+  const tabs=[['mine','Assigned to me'],['opened','Opened by me'],['closed','Closed'],...(u.role==='admin'?[['all','All tickets']]:[])];
+  const q=(ui.tkQ||'').trim().toUpperCase();
+  const list=lists[tab].filter(t=>!q||t.ref.includes(q)||t.id.includes(q)||t.title.toUpperCase().includes(q)).slice().sort((a,b)=>(tkLast(b).at||b.createdAt).localeCompare(tkLast(a).at||a.createdAt));
+  return ph('tickets','Questions and follow-ups on an order. Each ticket belongs to one order and is assigned to one person to reply. Only the person who opened a ticket can close it.')+`
+  <div class="panel"><div class="spread"><h2>New ticket</h2><button class="btn ghost sm" data-act="tkToggleNew" data-ref="">${ui.tkNewOn==='__page'?'Cancel':'Open a ticket'}</button></div>${ui.tkNewOn==='__page'?`<div style="margin-top:10px">${tkNewForm(ui.tkRef||'',false)}</div>`:''}</div>
+  <div class="spread" style="margin-bottom:6px"><div class="tabs" role="tablist" style="margin:0">${tabs.map(([k,l])=>{const n=lists[k].filter(t=>k==='closed'||k==='all'?true:true).length;const need=lists[k].filter(t=>t.status==='Open'&&tkNeedsMe(t)).length;return `<button class="tab ${tab===k?'on':''}" role="tab" aria-selected="${tab===k}" data-act="tkTab" data-k="${k}">${l} <span class="muted">${n}</span>${need?` <span class="nav-c">${need}</span>`:''}</button>`}).join('')}</div>
+    <label style="flex-direction:row;align-items:center;gap:8px">Search<input data-chg="tkQ" value="${esc(ui.tkQ||'')}" placeholder="Ticket, order or subject" style="width:220px"></label></div>
+  ${list.length?list.map(t=>ticketCard(t,true)).join(''):`<div class="panel empty">${tab==='mine'?'No open tickets are assigned to you.':tab==='opened'?'You have no open tickets.':'No tickets here.'}</div>`}`;
+}
+
 /* ---------- Stock validation ---------- */
 function scVarCell(v){return {h:`<strong style="color:${v===0?'var(--ok)':v<0?'var(--bad)':'var(--warn)'}">${v>0?'+':''}${v}</strong>`}}
 function scProductState(lines){
@@ -1666,7 +1735,7 @@ function traceView(ref){
     return `<div class="panel"><div class="spread" style="margin-bottom:12px"><div class="row">${refTag(ref,true)}<span class="ty">Direct order</span>${st('Recorded')}</div><button class="btn plain sm" data-act="clearTrace">Close trace</button></div>
       <div class="kv" style="margin-bottom:16px"><div><span>Customer</span>${esc(custLabel(find(state.customers,ds.customerId)))}${ds.govId?', '+esc(govName(ds.govId)):''}</div><div><span>Sale</span><span class="code">${esc(ds.id)}</span>, ${money(ds.total)}, ${fmtD(ds.date)}</div>
       <div><span>Stock movements</span>${mv.map(m=>`${m.qty} × ${esc(nm(state.products,m.productId))} (batch ${esc(batchNo(state,m.batchId))}): ${esc(locName(state,m.from))} to customer`).join('<br>')}</div><div><span>Logistics</span>Not used, handed over directly</div></div>
-      <h3 style="margin-bottom:10px">Audit trail</h3><ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol></div>`}
+      ${orderTickets(ref)}<h3 style="margin:18px 0 10px">Audit trail</h3><ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol></div>`}
   if(!r)return `<div class="panel"><div class="spread"><h2>Trace</h2><button class="btn plain sm" data-act="clearTrace">Close</button></div><p class="err" style="margin-top:8px">No order found with reference ${esc(ref)}. Check the number and try again.</p></div>`;
   const t=taskOf(state,ref), rt=t&&t.routeId?find(state.routes,t.routeId):null, sale=state.sales.find(x=>x.ref===ref), mv=state.movements.filter(m=>m.ref===ref), lg=state.log.filter(l=>l.ref===ref);
   return `<div class="panel">
@@ -1683,6 +1752,7 @@ function traceView(ref){
     </div>
     <div class="spread"><h3 style="margin-bottom:4px">Products to ${(TYPES[r.type]||{}).flow==='in'?'return':'prepare'}</h3>${r.items.length?`<button class="btn ghost sm" data-act="exportOrder" data-ref="${esc(r.ref)}">Export to Excel</button>`:''}</div>
     ${pickTable(r,false)}
+    ${orderTickets(ref)}
     <h3 style="margin:18px 0 10px">Audit trail</h3>
     <ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol>
   </div>`;
@@ -1750,7 +1820,7 @@ const forms={
     if(!x||x.hash!==h){ui.loginError='Username or password is incorrect.';render();return}
     if(!x.active){ui.loginError='This account is deactivated. Contact the administrator.';render();return}
     session={uid:x.id};try{sessionStorage.setItem(SS_KEY,JSON.stringify(session))}catch(e){}
-    ui.loginError='';ui.page=null;ui.project=null;ui.expand=null;ui.traceRef='';
+    ui.loginError='';ui.page=null;ui.project=null;ui.expand=null;ui.traceRef='';ui.tkTab=null;ui.tkQ='';ui.tkNewOn=null;
     render();
     act(s=>log(s,'Signed in',null,x.name+', '+ROLES[x.role],'',x.username,null));
   },
@@ -2078,6 +2148,24 @@ const forms={
       log(s,'Added to trip',t.ref,rt.name+' on '+rt.date+', stop '+rt.taskIds.length+', agent '+nm(s.agents,rt.agentId),'Routed',null,r.projectId)});
     ui.addTo=null;toastMsg=ids.length+' order'+(ids.length===1?'':'s')+' added to '+rt.name+'.';
   },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
+  tkNew(fd,f){
+    const e=f.querySelector('.form-err');const show=m=>{e.textContent=m;e.classList.remove('hide')};
+    const ref=String(fd.get('ref')||'').trim().toUpperCase(),as=fd.get('assignee'),title=String(fd.get('title')||'').trim(),text=String(fd.get('text')||'').trim();
+    if(!ref)return show('Enter the order reference.');if(!tkRefOk(ref))return show('No order with reference '+ref+'.');
+    if(!as)return show('Choose who the ticket is assigned to.');if(!title)return show('Enter a subject.');if(!text)return show('Write the message.');
+    act(s=>{s.tickets=s.tickets||[];s.seq.tkt=(s.seq.tkt||0)+1;const u=me();
+      const t={id:'TKT-'+pad(s.seq.tkt,4),ref,projectId:tkProj(ref),title,assigneeId:as,createdById:u.id,createdAt:now(),status:'Open',messages:[{byId:u.id,at:now(),text}]};
+      s.tickets.push(t);const a=find(s.users,as);if(a&&a.pages&&!a.pages.includes('tickets'))a.pages.push('tickets');
+      log(s,'Ticket opened',ref,t.id+' to '+(a?a.name:'?')+': '+title,'Open');
+      ui.tkNewOn=null;ui.tkRef='';toastMsg='Ticket '+t.id+' opened and assigned to '+(a?a.name:'')+'.';
+    },null);if(toastMsg){toast(toastMsg);toastMsg=''}
+  },
+  tkReply(fd,f){
+    const e=f.querySelector('.form-err');const text=String(fd.get('text')||'').trim();if(!text){e.textContent='Write your reply first.';e.classList.remove('hide');return}
+    act(s=>{const t=find(s.tickets,f.dataset.id);if(!t)throw new Error('This ticket no longer exists.');if(t.status!=='Open')throw new Error('This ticket is closed. Only the person who opened it can reopen it.');
+      const u=me();if(!(u.id===t.assigneeId||u.id===t.createdById||u.role==='admin'))throw new Error('Only the people on this ticket can reply.');
+      t.messages.push({byId:u.id,at:now(),text});log(s,'Ticket reply',t.ref,t.id+': '+(text.length>80?text.slice(0,80)+'…':text),'Open')},'Reply sent.');
+  },
   traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
 };
 let toastMsg='';
@@ -2109,7 +2197,7 @@ function completeTask(s,t,r){
 
 /* ---------- Click handlers ---------- */
 const acts={
-  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.addTo=null;ui.editTrip=null;ui.pending=false;render();window.scrollTo(0,0)},
+  nav(el){ui.page=el.dataset.page;ui.expand=null;ui.editReq=null;ui.addTo=null;ui.editTrip=null;ui.tkNewOn=null;ui.pending=false;render();window.scrollTo(0,0)},
   async logout(){if(FB){if(me())await fbAct(s=>log(s,'Signed out',null,'','',undefined,null));ui.pwOpen=false;await FB.auth.signOut();return}act(s=>log(s,'Signed out',null,'','',undefined,null));session=null;try{sessionStorage.removeItem(SS_KEY)}catch(e){}render()},
   myPwOpen(){ui.pwOpen=true;render()},
   myPwClose(){ui.pwOpen=false;render()},
@@ -2232,6 +2320,14 @@ const acts={
     if(window.XLSX){const wb=XLSX.utils.book_new();[['By product and route',s1],['Every movement',s2],['Filters',info]].forEach(([n,r])=>{const ws=XLSX.utils.aoa_to_sheet(r);ws['!cols']=r[0].map((_,i)=>({wch:Math.min(40,Math.max(10,...r.map(x=>String(x[i]??'').length+2)))}));XLSX.utils.book_append_sheet(wb,ws,n)});await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
     else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile(base+'.csv','\ufeff'+s2.map(r=>r.map(q).join(',')).join('\n'))}
   },
+  tkTab(el){ui.tkTab=el.dataset.k;render()},
+  tkToggleNew(el){const ref=el.dataset.ref;const key=ref||'__page';ui.tkNewOn=ui.tkNewOn===key?null:key;if(!ref)ui.tkRef='';render()},
+  tkGo(el){const ref=el.dataset.ref;ui.page='tickets';ui.tkQ=ref;ui.tkTab=myTickets().some(t=>t.ref===ref&&t.status==='Open'&&t.assigneeId===me().id)?'mine':(myTickets().some(t=>t.ref===ref&&t.status==='Open')?(me().role==='admin'?'all':'opened'):'mine');
+    if(!myTickets().some(t=>t.ref===ref)){ui.tkNewOn='__page';ui.tkRef=ref;ui.tkQ=''}render();window.scrollTo(0,0)},
+  tkClose(el){act(s=>{const t=find(s.tickets,el.dataset.id);if(!t)throw new Error('This ticket no longer exists.');if(t.createdById!==me().id)throw new Error('Only the person who opened this ticket can close it.');if(t.status!=='Open')throw new Error('This ticket is already closed.');
+    t.status='Closed';t.closedAt=now();t.closedById=me().id;log(s,'Ticket closed',t.ref,t.id+': '+t.title,'Closed')},'Ticket closed.')},
+  tkReopen(el){act(s=>{const t=find(s.tickets,el.dataset.id);if(!t)throw new Error('This ticket no longer exists.');if(t.createdById!==me().id)throw new Error('Only the person who opened this ticket can reopen it.');
+    t.status='Open';t.closedAt=null;t.closedById=null;log(s,'Ticket reopened',t.ref,t.id+': '+t.title,'Open')},'Ticket reopened.')},
   clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
@@ -2338,6 +2434,7 @@ const changes={
     };rd.readAsArrayBuffer(file)},
   mvf(el){ui.mvf=ui.mvf||{};ui.mvf[el.dataset.k]=el.value;if(el.dataset.k==='loc'&&!el.value)ui.mvf.dir='any';render()},
   mtAgent(el){ui.mtAgent=el.value;render()},
+  tkQ(el){ui.tkQ=el.value;render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
