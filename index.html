@@ -305,7 +305,7 @@ const PAGES=[
 const ROLE_PAGES={
   admin:PAGES.map(p=>p[0]),
   ops:['dashboard','requests','sales','inventory','movements','report'],
-  lead:['dashboard','prepare','routes','inventory','movements','stockcheck','report'],
+  lead:['dashboard','prepare','routes','mytasks','inventory','movements','stockcheck','report'],
   agent:['mytasks'],
   viewer:['dashboard','sales','inventory','movements','report']
 };
@@ -479,6 +479,7 @@ function migrate(s){
   if(!s.routeGroups)s.routeGroups=[];
   if(!s.counts)s.counts=[];
   if(!s.hasMovementsPage){(s.users||[]).forEach(u=>{if(['admin','ops','lead','viewer'].includes(u.role)&&u.pages&&!u.pages.includes('movements')&&u.pages.includes('inventory'))u.pages.push('movements')});s.hasMovementsPage=true}
+  if(!s.leadMyTasks){(s.users||[]).forEach(u=>{if(u.role==='lead'&&u.pages&&!u.pages.includes('mytasks'))u.pages.push('mytasks')});s.leadMyTasks=true}
   if(!s.hasStockCheckPage){(s.users||[]).forEach(u=>{if((u.role==='admin'||u.role==='lead')&&u.pages&&!u.pages.includes('stockcheck'))u.pages.push('stockcheck')});s.hasStockCheckPage=true}
   if(!s.sharedGroups){const keep={};const remap={};
     s.routeGroups.forEach(g=>{const k=g.name.trim().toLowerCase();if(keep[k]){keep[k].govIds=[...new Set([...keep[k].govIds,...g.govIds])];remap[g.id]=keep[k].id}else{keep[k]=g}});
@@ -1306,17 +1307,26 @@ function pgRoutes(u){
 
 function pgMyTasks(u){
   if(!ui.project)return ph('mytasks')+needProject();
-  const ids=myAgentIds(u);
-  if(!ids.length&&u.role!=='admin')return ph('mytasks')+`<div class="panel empty">Your login is not linked to a logistics agent yet. Ask the administrator to link it on Setup data, Logistics agents.</div>`;
-  const agentIds=u.role==='admin'&&!ids.length?P(state.agents).map(a=>a.id):ids;
-  const routes=P(state.routes).filter(r=>agentIds.includes(r.agentId)).sort((a,b)=>(a.date).localeCompare(b.date));
+  const ids=myAgentIds(u);const sup=u.role==='admin'||u.role==='lead';
+  if(!ids.length&&!sup)return ph('mytasks')+`<div class="panel empty">Your login is not linked to a logistics agent yet. Ask the administrator to link it on Setup data, Logistics agents.</div>`;
+  const all=AG();let view=sup?(ui.mtAgent||(ids.length?'all':'all')):'mine';
+  if(view!=='all'&&view!=='mine'&&!all.some(a=>a.id===view))view='all';
+  const agentIds=view==='mine'?ids:view==='all'?(sup?[...new Set([...ids,...all.map(a=>a.id)])]:ids):[view];
+  const mineFirst=(a,b)=>(ids.includes(b.agentId)?1:0)-(ids.includes(a.agentId)?1:0)||(a.date).localeCompare(b.date);
+  const routes=P(state.routes).filter(r=>agentIds.includes(r.agentId)).sort(mineFirst);
   const active=routes.filter(r=>routeStatus(r)!=='Done'), done=routes.filter(r=>routeStatus(r)==='Done').reverse().slice(0,5);
   const waiting=P(state.tasks).filter(t=>agentIds.includes(t.agentId)&&t.status==='Awaiting route');
-  return ph('mytasks','Your routes and stops. Update each stop as you go: completing it posts the stock movement and, for deliveries, the sale.')+
-  (u.role==='admin'&&!ids.length?`<p class="note" style="margin-bottom:14px">You are viewing every agent's routes as administrator.</p>`:'')+
-  (active.length?active.map(r=>routeCard(r,true)).join(''):'<div class="panel empty">No active routes. New routes from your team leader appear here.</div>')+
+  const openCount=id=>P(state.tasks).filter(t=>t.agentId===id&&['Routed','In transit'].includes(t.status)).length;
+  const picker=sup?`<div class="panel"><div class="fgrid"><label>Show trips of<select data-chg="mtAgent">
+      <option value="all" ${view==='all'?'selected':''}>All agents${ids.length?' (mine first)':''}</option>
+      ${ids.length?`<option value="mine" ${view==='mine'?'selected':''}>Only my own trips</option>`:''}
+      <optgroup label="One agent">${all.map(a=>`<option value="${a.id}" ${view===a.id?'selected':''}>${esc(a.name)}${ids.includes(a.id)?' (you)':''}, ${openCount(a.id)} open</option>`).join('')}</optgroup></select></label></div>
+      <p class="muted small" style="margin-top:8px">As ${u.role==='lead'?'team leader':'administrator'} you can start, complete or fail any agent's stop. It is recorded under your name.</p></div>`:'';
+  const mark=r=>sup&&!ids.includes(r.agentId)?`<p class="small" style="margin:0 0 6px;color:var(--route);font-weight:700">Agent: ${esc(nm(state.agents,r.agentId))}</p>`:sup&&ids.includes(r.agentId)?`<p class="small" style="margin:0 0 6px;color:var(--ok);font-weight:700">Your trip</p>`:'';
+  return ph('mytasks',sup?'Your trips and your agents\' trips. Update each stop as you go: completing it posts the stock movement and, for deliveries, the sale.':'Your routes and stops. Update each stop as you go: completing it posts the stock movement and, for deliveries, the sale.')+picker+
+  (active.length?active.map(r=>mark(r)+routeCard(r,true)).join(''):'<div class="panel empty">No active trips for this selection.</div>')+
   (waiting.length?`<div class="panel"><h2>Assigned, waiting for a route</h2><div class="stack">${waiting.map(t=>{const r=find(state.requests,t.requestId);return `<div class="row">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}</span><span class="muted small">${fmtD(t.date)}</span></div>`}).join('')}</div></div>`:'')+
-  (done.length?`<h2 style="margin:18px 0 10px">Recently finished</h2>`+done.map(r=>routeCard(r,false)).join(''):'');
+  (done.length?`<h2 style="margin:18px 0 10px">Recently finished</h2>`+done.map(r=>mark(r)+routeCard(r,false)).join(''):'');
 }
 
 function soLine(){
@@ -2086,7 +2096,7 @@ function completeTask(s,t,r){
     const m=s.movements[s.movements.length-1];mv.push(m.qty+' × '+nm(s.products,m.productId)+' batch '+batchNo(s,m.batchId)+' '+locName(s,m.from)+' to '+locName(s,m.to));
   });
   t.status='Completed';t.completedAt=now();r.status='Completed';r.completedAt=now();
-  log(s,'Task completed',r.ref,t.id+' by '+nm(s.agents,t.agentId),'Completed',null,r.projectId);
+  {const u=me();const own=u&&myAgentIds(u).includes(t.agentId);log(s,'Task completed',r.ref,t.id+' by '+nm(s.agents,t.agentId)+(u&&!own?', closed by '+u.name+' ('+(ROLES[u.role]||u.role)+')':''),'Completed',null,r.projectId)}
   if(r.type==='Delivery'){
     const lines=r.items.map(it=>{const p=find(s.products,it.productId)||{price:0};return {productId:it.productId,batchId:it.batchId,qty:it.qty,price:p.price,amount:it.qty*p.price}});
     const sale={id:'SAL-'+pad(++s.seq.sale,4),ref:r.ref,projectId:r.projectId,customerId:r.customerId,agentId:t.agentId,date:today(),at:now(),lines,total:lines.reduce((a,l)=>a+l.amount,0),recordedBy:cur()};
@@ -2134,7 +2144,7 @@ const acts={
   taskStart(el){act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(t.status!=='Routed')throw new Error('This stop has already been started.');t.status='In transit';t.startedAt=now();r.status='In transit';log(s,'Task started',r.ref,t.id+', on the way','In transit',null,r.projectId)},'Stop started.')},
   taskDone(el){act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(!['Routed','In transit'].includes(t.status))throw new Error('This stop is already closed.');completeTask(s,t,r)},'Stop completed. Stock updated'+'.')},
   taskFail(el){const why=(document.getElementById('why_'+el.dataset.id)||{}).value||'';if(!why.trim()){toast('Write the reason the stop failed, then mark it failed.','bad');document.getElementById('why_'+el.dataset.id).focus();return}
-    act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);t.status='Failed';t.failedAt=now();t.failReason=why.trim();r.status='Failed';r.failReason=why.trim();log(s,'Task failed',r.ref,t.id+': '+why.trim(),'Failed',null,r.projectId)},'Stop marked failed. The team leader can reassign it.')},
+    act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);t.status='Failed';t.failedAt=now();t.failReason=why.trim();r.status='Failed';r.failReason=why.trim();log(s,'Task failed',r.ref,t.id+': '+why.trim()+((u=>u&&!myAgentIds(u).includes(t.agentId)?', closed by '+u.name+' ('+(ROLES[u.role]||u.role)+')':'')(me())),'Failed',null,r.projectId)},'Stop marked failed. The team leader can reassign it.')},
   delGroup(el){const g=find(state.routeGroups,el.dataset.id);if(!g||!confirm('Delete route group '+g.name+' from all projects? Existing routes keep their stops.'))return;act(s=>{s.routeGroups=s.routeGroups.filter(x=>x.id!==g.id);log(s,'Route group deleted',null,g.name)},'Route group deleted.')},
   async toggleUser(el){await act(s=>{const x=find(s.users,el.dataset.id);x.active=!x.active;log(s,x.active?'User activated':'User deactivated',null,x.username,x.active?'Active':'Inactive',null,null)});if(FB)fbSyncAccess(find(state.users,el.dataset.id))},
   async eraseAll(){if(FB){const t=prompt('This deletes ALL business data: projects, products, stock, orders and history. User accounts are kept. Type ERASE to confirm.');if(t!=='ERASE'){if(t!==null)toast('Nothing was erased.');return}const st=migrate(blank());st.users=structuredClone(state.users);try{await fbReplace(st);toast('All business data erased.')}catch(e){toast(fbErr(e),'bad')}return}
@@ -2327,6 +2337,7 @@ const changes={
       const first=[...document.querySelectorAll('#lines .line')].find(l=>l.querySelector('select[name=item_product]').value&&!l.querySelector('input[name=item_batch]').value.trim());if(first)first.querySelector('input[name=item_batch]').focus();
     };rd.readAsArrayBuffer(file)},
   mvf(el){ui.mvf=ui.mvf||{};ui.mvf[el.dataset.k]=el.value;if(el.dataset.k==='loc'&&!el.value)ui.mvf.dir='any';render()},
+  mtAgent(el){ui.mtAgent=el.value;render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
