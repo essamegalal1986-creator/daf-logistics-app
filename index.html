@@ -686,6 +686,21 @@ const P=list=>{const out=P0(list);if(!state||!scopeOwn())return out;
 function projCode(pid){return pid===ALL?'ALL':(find(state.projects,pid)||{}).code||''}
 function projTag(pid){return isAll()?`<span class="ptag">${esc(projCode(pid))}</span>`:''}
 function allGate(what){const projs=myProjects(me());return `<div class="panel"><p style="margin-bottom:10px">You are viewing <strong>all projects</strong>. To ${esc(what)}, choose the project first:</p><div class="row">${projs.map(p=>`<button class="btn ghost sm" data-act="pickProject" data-id="${p.id}">${esc(p.code)}: ${esc(p.name)}</button>`).join('')}</div></div>`}
+/* Logins that can be linked to a logistics agent: logistics agents and logistics team leaders */
+function agentLoginOpts(sel,agentId){
+  const taken=id=>state.agents.some(a=>!a.deleted&&a.id!==agentId&&a.userId===id);
+  const us=state.users.filter(u=>(u.active||u.id===sel)&&(u.role==='agent'||u.role==='lead'||u.id===sel));
+  const grp=(role,lb)=>{const L=us.filter(u=>role?u.role===role:!['agent','lead'].includes(u.role));return L.length?`<optgroup label="${lb}">${L.map(u=>`<option value="${u.id}" ${u.id===sel?'selected':''} ${taken(u.id)?'disabled':''}>${esc(u.name)} (${esc(u.username)})${taken(u.id)?', already linked':''}</option>`).join('')}</optgroup>`:''};
+  return `<option value="">No login</option>${grp('agent','Logistics agents')}${grp('lead','Logistics team leaders')}${grp('','Other')}`;
+}
+function linkLogin(s,userId,agentName){
+  if(!userId)return '';
+  const u=find(s.users,userId);if(!u)throw new Error('That login no longer exists.');
+  const other=s.agents.find(a=>!a.deleted&&a.userId===userId&&a.name!==agentName);
+  if(other&&other.name!==agentName)throw new Error(u.username+' is already linked to agent '+other.name+'. One login can be linked to one agent.');
+  if(!(u.pages||[]).includes('mytasks')){u.pages=[...(u.pages||[]),'mytasks'];return ' My tasks page added to '+u.username+'.'}
+  return '';
+}
 function myAgentIds(u){return state.agents.filter(a=>a.userId===u.id).map(a=>a.id)}
 
 /* ---------- Render ---------- */
@@ -1053,12 +1068,13 @@ function pgSetup(u){
       <button class="btn" type="submit">Add sales agent</button></form></div>`+
       table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1},...(isAdmin()?[{l:''}]:[])],P(state.salesTeam).map(x=>[x.name+((isAll()||x.projectId===ALL)?' ('+projCode(x.projectId)+')':''),x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id)),...(isAdmin()?[H(delBtn('sales',x.id))]:[])]),'No sales team yet.');
   }else if(t==='agents'){
-    const agentUsers=state.users.filter(x=>x.role==='agent'&&x.active);
-    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so they can see their routes on the My tasks page.</p><form data-form="agent" class="fgrid">
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so that person sees the agent's trips on the My tasks page. The login can be a logistics agent or a logistics team leader account.</p><form data-form="agent" class="fgrid">
       <label>Agent name<input name="name" required></label><label>Phone<input name="phone"></label><label>Vehicle<input name="vehicle"></label>
-      <label>Login account<select name="userId">${opts(agentUsers,'',x=>x.name+' ('+x.username+')','No login')}</select></label>
+      <label>Login account<select name="userId">${agentLoginOpts('','')}</select></label>
       <button class="btn" type="submit">Add agent</button></form></div>`+
-      table([{l:'Agent'},{l:'Phone'},{l:'Vehicle'},{l:'Login'},{l:'Open tasks',num:1},...(isAdmin()?[{l:''}]:[])],AG().map(a=>[a.name+((isAll()||a.projectId===ALL)?' ('+projCode(a.projectId)+')':''),a.phone||'',a.vehicle||'',a.userId?(find(state.users,a.userId)||{}).username||'':'None',String(P(state.tasks).filter(t=>t.agentId===a.id&&!['Completed','Failed'].includes(t.status)).length),...(isAdmin()?[H(delBtn('agent',a.id))]:[])]),'No agents yet.');
+      table([{l:'Agent'},{l:'Phone'},{l:'Vehicle'},{l:'Login'},{l:'Open tasks',num:1},{l:''}],AG().map(a=>{const lu=a.userId?find(state.users,a.userId):null;const row=[a.name+((isAll()||a.projectId===ALL)?' ('+projCode(a.projectId)+')':''),a.phone||'',a.vehicle||'',H(lu?`${esc(lu.username)}<br><span class="small muted">${esc(ROLES[lu.role]||'')}${lu.active?'':', inactive'}</span>`:'<span class="muted">None</span>'),String(P(state.tasks).filter(t=>t.agentId===a.id&&!['Completed','Failed'].includes(t.status)).length),H(`<div class="row"><button class="btn plain sm" data-act="expand" data-id="${a.id}">Edit</button>${delBtn('agent',a.id)}</div>`)];
+        if(ui.expand===a.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="6"><form data-form="agentEdit" data-id="${a.id}" class="fgrid"><label>Agent name<input name="name" required value="${esc(a.name)}"></label><label>Phone<input name="phone" value="${esc(a.phone||'')}"></label><label>Vehicle<input name="vehicle" value="${esc(a.vehicle||'')}"></label><label>Login account<select name="userId">${agentLoginOpts(a.userId,a.id)}</select></label><div class="row"><button class="btn" type="submit">Save agent</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+        return row}),'No agents yet.');
   }else{
     const mv=P(state.movements).filter(m=>m.ref==='OPENING').slice().reverse();
     const here=P(state.products),elsewhere=state.products.filter(p=>p.projectId!==ui.project&&myProjects(u).some(x=>x.id===p.projectId));
@@ -1796,7 +1812,19 @@ const forms={
   customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(ui.project===ALL||x.projectId===ALL||x.projectId===ui.project)&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:ui.project,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
   warehouse(fd){act(s=>{const w={id:rid('wh'),projectId:ui.project,name:String(fd.get('name')).trim(),location:String(fd.get('location')).trim()};s.warehouses.push(w);log(s,'Warehouse added',null,w.name)},'Warehouse added.')},
   salesperson(fd){act(s=>{const x={id:rid('st'),projectId:ui.project,name:String(fd.get('name')).trim(),role:String(fd.get('role')).trim(),phone:String(fd.get('phone')).trim()};s.salesTeam.push(x);log(s,'Sales agent added',null,x.name)},'Sales agent added.')},
-  agent(fd){act(s=>{const a={id:rid('ag'),projectId:ui.project,name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim(),vehicle:String(fd.get('vehicle')).trim(),userId:fd.get('userId')||''};s.agents.push(a);log(s,'Logistics agent added',null,a.name+(a.userId?', login '+nm(s.users,a.userId):''))},'Agent added.')},
+  agent(fd){act(s=>{const a={id:rid('ag'),projectId:ui.project,name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim(),vehicle:String(fd.get('vehicle')).trim(),userId:fd.get('userId')||''};
+    if(a.userId&&s.agents.some(x=>!x.deleted&&x.userId===a.userId))throw new Error('That login is already linked to another agent. One login can be linked to one agent.');
+    const extra=linkLogin(s,a.userId,a.name);s.agents.push(a);log(s,'Logistics agent added',null,a.name+(a.userId?', login '+(find(s.users,a.userId)||{}).username:''));toastMsg='Agent added.'+extra},null);if(toastMsg){toast(toastMsg);toastMsg=''}},
+  agentEdit(fd,f){act(s=>{const a=find(s.agents,f.dataset.id);if(!a||a.deleted)throw new Error('This agent no longer exists.');
+    const name=String(fd.get('name')||'').trim();if(!name)throw new Error('Enter the agent name.');
+    const uid=fd.get('userId')||'';
+    if(uid&&s.agents.some(x=>!x.deleted&&x.id!==a.id&&x.userId===uid))throw new Error('That login is already linked to another agent. One login can be linked to one agent.');
+    const ch=[];if(name!==a.name)ch.push('name '+a.name+' to '+name);if(String(fd.get('phone')||'').trim()!==(a.phone||''))ch.push('phone');if(String(fd.get('vehicle')||'').trim()!==(a.vehicle||''))ch.push('vehicle');
+    if(uid!==(a.userId||''))ch.push('login '+((find(s.users,a.userId)||{}).username||'none')+' to '+((find(s.users,uid)||{}).username||'none'));
+    if(!ch.length)throw new Error('Nothing was changed.');
+    let extra='';if(uid&&uid!==a.userId)extra=linkLogin(s,uid,name);
+    a.name=name;a.phone=String(fd.get('phone')||'').trim();a.vehicle=String(fd.get('vehicle')||'').trim();a.userId=uid;ui.expand=null;
+    log(s,'Logistics agent updated',null,name+': '+ch.join(', '),'',null,a.projectId===ALL?null:a.projectId);toastMsg='Agent saved.'+extra},null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   opening(fd){act(s=>{
     const q=Math.floor(Number(fd.get('qty')));if(!(q>0))throw new Error('Enter a quantity above zero.');
     const bid=fd.get('batch');if(!bid)throw new Error('Choose the batch.');
