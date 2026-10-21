@@ -1278,7 +1278,7 @@ function routeCard(rt,agentView){
     let actions='';
     if(agentView&&['Routed','In transit'].includes(t.status)){
       actions=`<div class="row" style="margin-top:10px">${t.status==='Routed'?`<button class="btn plain sm" data-act="taskStart" data-id="${t.id}">Start</button>`:''}
-        ${stockShort(state,r).length?`<button class="btn ok sm" disabled title="Waiting for stock" style="opacity:.45;cursor:not-allowed">Mark completed</button><span class="small" style="color:var(--warn);font-weight:700">Waiting for stock in ${esc([...new Set(stockShort(state,r).map(x=>locName(state,x.loc)||'the warehouse'))].join(', '))}</span>`:`<button class="btn ok sm" data-act="taskDone" data-id="${t.id}">Mark completed</button>`}
+        <button class="btn ok sm" data-act="taskDone" data-id="${t.id}">Mark completed</button>${stockShort(state,r).length?`<span class="small" style="color:var(--warn);font-weight:700">Waiting for stock in ${esc([...new Set(stockShort(state,r).map(x=>locName(state,x.loc)||'the warehouse'))].join(', '))}. You can complete with the quantity available.</span>`:''}
         <input id="why_${t.id}" placeholder="Reason if failed" style="max-width:220px;padding:4px 8px" aria-label="Reason for failure">
         <button class="btn bad sm" data-act="taskFail" data-id="${t.id}">Mark failed</button></div>`;
     }
@@ -1525,6 +1525,44 @@ function openDeleteModal(kind,id){
   </div></div>`;
   const inp=m.querySelector('input[name=pw]');(inp||m.querySelector('button')).focus();
 }
+/* ---------- Confirm completion: as ordered, or with changes ---------- */
+function confLocs(r){return projLocs(state,r.projectId)}
+function confLocOpts(r,pid,bid,sel){const L=confLocs(r);return [['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const x=L.filter(y=>y[2]===k);return x.length?`<optgroup label="${lb}">${x.map(y=>`<option value="${y[0]}" ${y[0]===sel?'selected':''}>${esc(y[1])}${pid&&bid?', '+qty(state,y[0],pid,bid)+' in stock':''}</option>`).join('')}</optgroup>`:''}).join('')}
+function confRow(r,it,i){const p=find(state.products,it.productId)||{};const f=(TYPES[r.type]||{}).flow;
+  return `<tr data-i="${i}"><td><strong>${esc(p.name||'?')}</strong><br><span class="small muted">${esc([p.code,p.sku].filter(Boolean).join(' | '))}</span></td><td class="code">${esc(batchNo(state,it.batchId))}</td><td class="small">${esc(locName(state,itemLoc(it))||'')}</td><td class="num">${it.qty}</td>
+    <td><input type="number" min="0" step="1" name="cq_${i}" value="${it.qty}" data-inp="confQ" style="width:90px;text-align:right"></td><td><button type="button" class="btn plain sm" data-act="confZero" data-i="${i}">Remove</button></td></tr>`}
+function confAddRow(r){const f=(TYPES[r.type]||{}).flow;
+  return `<div class="conf-add fgrid" style="margin-top:6px"><label>Product ID<input name="ca_code" data-inp="confCode" placeholder="Type ID" autocomplete="off"></label>
+    <label>Product<select name="ca_product" data-chg="confProd"><option value="">Choose product</option>${PS().filter(p=>p.projectId===r.projectId||p.projectId===ALL).map(p=>`<option value="${p.id}">${esc(prodLabel(p))}</option>`).join('')}</select></label>
+    <label>Batch<select name="ca_batch" data-chg="confBatch"><option value="">Choose product first</option></select></label>
+    <label>${f==='in'?'Add back to':'Take from'}<select name="ca_loc"><option value="">Choose batch first</option></select></label>
+    <label>Quantity<input type="number" min="1" step="1" name="ca_qty" data-inp="confQ" style="width:90px"></label>
+    <button type="button" class="btn plain sm" data-act="confRmAdd" style="margin-top:22px">Remove</button></div>`}
+function openConfirm(taskId,adjust){
+  const t=find(state.tasks,taskId);if(!t)return;const r=find(state.requests,t.requestId);if(!r)return;
+  if(!r.items.length){act(s=>{const tt=find(s.tasks,taskId),rr=find(s.requests,tt.requestId);if(!['Routed','In transit'].includes(tt.status))throw new Error('This stop is already closed.');completeTask(s,tt,rr)},'Stop completed.');return}
+  const short=stockShort(state,r).length>0;if(short)adjust=true;
+  const tot=r.items.reduce((a,it)=>a+Number(it.qty),0);
+  const m=document.getElementById('modal');
+  m.innerHTML=`<div class="modal-bg" data-act="closeModal" data-self="1"><div class="modal conf" role="dialog" aria-modal="true" aria-labelledby="cft" style="border-top-color:var(--ok);max-width:${adjust?'860px':'520px'}">
+    <h2 id="cft">Complete ${esc(r.ref)}</h2>
+    <p class="muted small" style="margin-bottom:10px">${esc(r.type)} for ${esc(partyText(state,r))}. ${r.items.length} product line${r.items.length===1?'':'s'}, ${tot} units ordered.</p>
+    ${!adjust?`<p style="margin-bottom:14px">Was the order ${((TYPES[r.type]||{}).flow==='in')?'received':'delivered'} exactly as ordered?</p>
+      <div class="row"><button class="btn ok" data-act="confAll" data-id="${t.id}">Yes, confirm all as ordered</button><button class="btn ghost" data-act="confAdjust" data-id="${t.id}">No, there is a difference</button><button class="btn plain" data-act="closeModal">Cancel</button></div>`
+    :`${short?`<p class="note" style="margin-bottom:10px">There is not enough stock for the full order. Enter the quantities actually ${((TYPES[r.type]||{}).flow==='in')?'received':'delivered'}.</p>`:''}
+      <form data-form="confirmDone" data-id="${t.id}" novalidate>
+      <div class="tbl"><table><thead><tr><th>Product</th><th>Batch</th><th>${(TYPES[r.type]||{}).flow==='in'?'Add back to':'Take from'}</th><th class="num">Ordered</th><th>Final quantity</th><th></th></tr></thead><tbody>${r.items.map((it,i)=>confRow(r,it,i)).join('')}</tbody></table></div>
+      <div id="confAdds"></div>
+      <div class="spread" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="confAddLine">Add product</button><strong id="confTot"></strong></div>
+      <template id="confTpl">${confAddRow(r)}</template>
+      <label style="margin-top:10px">Reason for the difference<input name="reason" placeholder="e.g. customer took 8 instead of 10"></label>
+      <p class="err form-err hide" role="alert" style="margin-top:8px"></p>
+      <div class="row" style="margin-top:12px"><button class="btn ok" type="submit">Confirm with these quantities</button>${short?'':`<button type="button" class="btn plain" data-act="confBack" data-id="${t.id}">Back</button>`}<button type="button" class="btn plain" data-act="closeModal">Cancel</button></div>
+      </form>`}
+  </div></div>`;
+  confTotal();
+}
+function confTotal(){const f=document.querySelector('form[data-form=confirmDone]');if(!f)return;let q=0,n=0;f.querySelectorAll('input[name^=cq_]').forEach(i=>{const v=Number(i.value)||0;q+=v;if(v>0)n++});f.querySelectorAll('.conf-add').forEach(a=>{const v=Number(a.querySelector('[name=ca_qty]').value)||0;if(a.querySelector('[name=ca_product]').value&&v>0){q+=v;n++}});const e=document.getElementById('confTot');if(e)e.textContent=`Final: ${n} line${n===1?'':'s'}, ${q} units`}
 function closeModal(){document.getElementById('modal').innerHTML=''}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modal').innerHTML)closeModal()});
 
@@ -1752,6 +1790,7 @@ function traceView(ref){
     </div>
     <div class="spread"><h3 style="margin-bottom:4px">Products to ${(TYPES[r.type]||{}).flow==='in'?'return':'prepare'}</h3>${r.items.length?`<button class="btn ghost sm" data-act="exportOrder" data-ref="${esc(r.ref)}">Export to Excel</button>`:''}</div>
     ${pickTable(r,false)}
+    ${r.adjusted?`<div class="note" style="margin-top:8px"><strong>Completed with changes</strong> by ${esc(r.adjusted.by)}, ${fmtT(r.adjusted.at)}: ${esc(r.adjusted.diffs.join('; '))}. Reason: ${esc(r.adjusted.reason)}</div>`:''}
     ${orderTickets(ref)}
     <h3 style="margin:18px 0 10px">Audit trail</h3>
     <ol class="timeline">${lg.map(l=>`<li><strong>${esc(l.action)}</strong> ${st(l.status)}<br><span class="muted small">${fmtT(l.at)}, by ${esc(l.by)}</span>${l.detail?`<br><span class="small">${esc(l.detail)}</span>`:''}</li>`).join('')}</ol>
@@ -2166,6 +2205,29 @@ const forms={
       const u=me();if(!(u.id===t.assigneeId||u.id===t.createdById||u.role==='admin'))throw new Error('Only the people on this ticket can reply.');
       t.messages.push({byId:u.id,at:now(),text});log(s,'Ticket reply',t.ref,t.id+': '+(text.length>80?text.slice(0,80)+'…':text),'Open')},'Reply sent.');
   },
+  confirmDone(fd,f){
+    const e=f.querySelector('.form-err');const show=m=>{e.textContent=m;e.classList.remove('hide')};
+    const t0=find(state.tasks,f.dataset.id);if(!t0)return show('This stop no longer exists.');const r0=find(state.requests,t0.requestId);
+    const items=[];let bad='';
+    r0.items.forEach((it,i)=>{const v=Math.floor(Number(fd.get('cq_'+i)));if(!(v>=0)){bad=bad||'Enter a quantity of 0 or more on every line.';return}if(v>0)items.push({...it,qty:v})});
+    f.querySelectorAll('.conf-add').forEach((a,k)=>{const g=n=>a.querySelector(`[name=${n}]`).value;const pid=g('ca_product');if(!pid&&!g('ca_qty'))return;
+      if(!pid)bad=bad||'Added line '+(k+1)+': choose a product.';else if(!g('ca_batch'))bad=bad||'Added line '+(k+1)+': choose a batch.';else if(!g('ca_loc'))bad=bad||'Added line '+(k+1)+': choose the location.';
+      const q=Math.floor(Number(g('ca_qty')));if(pid&&!(q>0))bad=bad||'Added line '+(k+1)+': enter a quantity above zero.';
+      if(pid&&g('ca_batch')&&g('ca_loc')&&q>0){const L=g('ca_loc');items.push({productId:pid,batchId:g('ca_batch'),qty:q,loc:L,warehouseId:L.startsWith('W:')?L.slice(2):'',added:true})}});
+    if(bad)return show(bad);
+    if(!items.length)return show('Every quantity is 0. To cancel the whole order, close this and mark the stop as failed instead.');
+    const reason=String(fd.get('reason')||'').trim();
+    const key=x=>x.productId+'|'+x.batchId+'|'+itemLoc(x);
+    const before={};r0.items.forEach(x=>before[key(x)]=(before[key(x)]||0)+Number(x.qty));const after={};items.forEach(x=>after[key(x)]=(after[key(x)]||0)+Number(x.qty));
+    const diffs=[];new Set([...Object.keys(before),...Object.keys(after)]).forEach(k=>{const a=before[k]||0,b=after[k]||0;if(a!==b){const [pid,bid]=k.split('|');diffs.push(nm(state.products,pid)+' ('+batchNo(state,bid)+') '+a+' to '+b)}});
+    if(!diffs.length)return show(stockShort(state,r0).length?'There is not enough stock for the full order. Lower the quantities to what was actually delivered.':'The quantities are the same as ordered. Use "Yes, confirm all as ordered" instead, or change a quantity.');
+    if(!reason)return show('Write the reason for the difference.');
+    const rv=state.rev;
+    Promise.resolve(act(s=>{const t=find(s.tasks,f.dataset.id),r=find(s.requests,t.requestId);if(!['Routed','In transit'].includes(t.status))throw new Error('This stop is already closed.');
+      r.origItems=r.origItems||structuredClone(r.items);r.items=items;r.adjusted={at:now(),by:cur(),reason,diffs};
+      log(s,'Quantities changed on completion',r.ref,diffs.join('; ')+'. Reason: '+reason,t.status,null,r.projectId);
+      completeTask(s,t,r)},null)).then(()=>{if(state.rev!==rv){closeModal();toast('Stop completed with the final quantities. Stock updated.')}else{const m=document.querySelector('#toast .toast.bad');if(m)show(m.textContent)}});
+  },
   traceForm(fd){ui.traceRef=String(fd.get('ref')).trim().toUpperCase();render();window.scrollTo(0,0)}
 };
 let toastMsg='';
@@ -2230,7 +2292,13 @@ const acts={
   clearTrace(){ui.traceRef='';render()},
   clearFilters(){ui.rf={from:'',to:'',type:'',status:'',user:'',q:'',gov:''};render()},
   taskStart(el){act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(t.status!=='Routed')throw new Error('This stop has already been started.');t.status='In transit';t.startedAt=now();r.status='In transit';log(s,'Task started',r.ref,t.id+', on the way','In transit',null,r.projectId)},'Stop started.')},
-  taskDone(el){act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(!['Routed','In transit'].includes(t.status))throw new Error('This stop is already closed.');completeTask(s,t,r)},'Stop completed. Stock updated'+'.')},
+  taskDone(el){openConfirm(el.dataset.id,false)},
+  confAll(el){closeModal();act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);if(!['Routed','In transit'].includes(t.status))throw new Error('This stop is already closed.');completeTask(s,t,r)},'Stop completed as ordered. Stock updated.')},
+  confAdjust(el){openConfirm(el.dataset.id,true)},
+  confBack(el){openConfirm(el.dataset.id,false)},
+  confZero(el){const i=document.querySelector(`input[name=cq_${el.dataset.i}]`);if(i){i.value=0;confTotal()}},
+  confAddLine(){document.getElementById('confAdds').appendChild(document.getElementById('confTpl').content.cloneNode(true))},
+  confRmAdd(el){el.closest('.conf-add').remove();confTotal()},
   taskFail(el){const why=(document.getElementById('why_'+el.dataset.id)||{}).value||'';if(!why.trim()){toast('Write the reason the stop failed, then mark it failed.','bad');document.getElementById('why_'+el.dataset.id).focus();return}
     act(s=>{const t=find(s.tasks,el.dataset.id),r=find(s.requests,t.requestId);t.status='Failed';t.failedAt=now();t.failReason=why.trim();r.status='Failed';r.failReason=why.trim();log(s,'Task failed',r.ref,t.id+': '+why.trim()+((u=>u&&!myAgentIds(u).includes(t.agentId)?', closed by '+u.name+' ('+(ROLES[u.role]||u.role)+')':'')(me())),'Failed',null,r.projectId)},'Stop marked failed. The team leader can reassign it.')},
   delGroup(el){const g=find(state.routeGroups,el.dataset.id);if(!g||!confirm('Delete route group '+g.name+' from all projects? Existing routes keep their stops.'))return;act(s=>{s.routeGroups=s.routeGroups.filter(x=>x.id!==g.id);log(s,'Route group deleted',null,g.name)},'Route group deleted.')},
@@ -2435,6 +2503,12 @@ const changes={
   mvf(el){ui.mvf=ui.mvf||{};ui.mvf[el.dataset.k]=el.value;if(el.dataset.k==='loc'&&!el.value)ui.mvf.dir='any';render()},
   mtAgent(el){ui.mtAgent=el.value;render()},
   tkQ(el){ui.tkQ=el.value;render()},
+  confProd(el){const a=el.closest('.conf-add');const f=el.closest('form');const t=find(state.tasks,f.dataset.id);const r=find(state.requests,t.requestId);const b=a.querySelector('[name=ca_batch]');
+    const p=find(state.products,el.value);a.querySelector('[name=ca_code]').value=p?(p.code||''):'';
+    b.innerHTML=el.value?'<option value="">Choose batch</option>'+batchesFor(state,el.value).map(x=>`<option value="${x.id}">${esc(x.batchNo)}, ${batchAvail(state,x.id)} in stock</option>`).join(''):'<option value="">Choose product first</option>';changes.confBatch(b)},
+  confBatch(el){const a=el.closest('.conf-add');const f=el.closest('form');const t=find(state.tasks,f.dataset.id);const r=find(state.requests,t.requestId);const pid=a.querySelector('[name=ca_product]').value;const l=a.querySelector('[name=ca_loc]');
+    if(!el.value){l.innerHTML='<option value="">Choose batch first</option>';return}
+    const def=r.items[0]?itemLoc(r.items[0]):'';l.innerHTML='<option value="">Choose location</option>'+confLocOpts(r,pid,el.value,def);confTotal()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
@@ -2488,7 +2562,7 @@ function soApplyAll(line){const f=document.getElementById('soForm');if(!f)return
 function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0,q=0,n=0;f.querySelectorAll('.soline').forEach(l=>{const qq=Number(l.querySelector('[name=so_qty]').value)||0;if(l.querySelector('[name=so_product]').value)n++;q+=qq;t+=qq*(Number(l.querySelector('[name=so_price]').value)||0)});
   document.getElementById('soTotal').innerHTML=`<span>Lines <strong>${n}</strong></span><span>Total quantity <strong>${q}</strong></span><span>Total <strong>${money(t)}</strong></span>`}
 function soTotalOld(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
-document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='sopcode'){const line=el.closest('.soline');const sel=line.querySelector('[name=so_product]');const p=prodByCode(el.value);
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='confQ'){confTotal();return}if(el.dataset&&el.dataset.inp==='confCode'){const a=el.closest('.conf-add');const sel=a.querySelector('[name=ca_product]');const p=prodByCode(el.value);const keep=el.value;if(p&&sel.value!==p.id){sel.value=p.id;changes.confProd(sel);el.value=keep}return}if(el.dataset&&el.dataset.inp==='sopcode'){const line=el.closest('.soline');const sel=line.querySelector('[name=so_product]');const p=prodByCode(el.value);
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.soProduct(sel);delete sel.dataset.fromCode;
     if(!p){const h=line.querySelector('.sohint');h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='opcode'){const f=el.form,sel=f.elements.product,h=f.querySelector('.ophint');const p=prodByCode(el.value);
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.lineProduct(sel);delete sel.dataset.fromCode;
