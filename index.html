@@ -233,8 +233,8 @@ button.ref:hover{filter:brightness(.95)}
 @media (prefers-reduced-motion:no-preference){.mnode.s-in-transit .mdot{animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 8px transparent}}}
 .sc-prod td{background:var(--sunk)}
 .ptag{display:inline-block;font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--route);background:var(--route-soft);border-radius:4px;padding:0 6px;margin-left:6px;vertical-align:1px}
-.modal-bg{position:fixed;inset:0;background:rgba(15,20,40,.55);display:grid;place-items:center;z-index:30;padding:20px}
-.modal{background:var(--surface);color:var(--ink);border-radius:12px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:4px solid var(--bad)}
+.modal-bg{position:fixed;inset:0;background:rgba(15,20,40,.55);display:grid;place-items:center;z-index:30;padding:16px;overflow-y:auto}
+.modal{background:var(--surface);color:var(--ink);border-radius:12px;max-width:480px;width:100%;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:4px solid var(--bad)}
 .modal h2{margin-bottom:8px}
 .modal ul{margin:8px 0 12px 18px;padding:0;font-size:14px}
 .soline{display:grid;grid-template-columns:120px minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.3fr) 90px 110px auto;gap:8px;align-items:start}
@@ -257,6 +257,27 @@ button.ref:hover{filter:brightness(.95)}
 .tk-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:2px}
 .st-open{color:var(--route);background:var(--route-soft)}
 .st-closed{color:var(--muted);background:var(--info-soft)}
+.conf .tbl{max-height:none}
+.conf thead th{position:sticky;top:-22px;z-index:1}
+.conf-actions{position:sticky;bottom:-22px;background:var(--surface);padding:12px 0 4px;margin-top:12px!important;border-top:1px solid var(--line);z-index:2}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.kpi{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;background:var(--surface)}
+.kpi .kl{font-size:13px;font-weight:700;color:var(--muted)}
+.kpi b{font-family:var(--cond);font-size:30px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .ks{font-size:12.5px;color:var(--muted)}
+.kd{font-size:12.5px;font-weight:700;margin-top:4px}
+.kd.up{color:var(--ok)}.kd.down{color:var(--bad)}
+.probs{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.prob{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--sunk)}
+.prob h3{font-size:15px}
+.pc{min-width:28px;text-align:center;border-radius:999px;padding:1px 9px;font-weight:700;background:var(--ok-soft);color:var(--ok)}
+.pc.bad{background:var(--bad-soft);color:var(--bad)}
+.pl{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pl li{display:flex;align-items:center;gap:8px;font-size:14px;flex-wrap:wrap}
+.bar-w{flex:1;min-width:60px;height:8px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar-w i{display:block;height:100%;background:var(--bad)}
+.soline.short{background:var(--bad-soft);border-left:4px solid var(--bad);border-radius:6px;padding:6px 6px 6px 8px}
+.soline .soshort{grid-column:1/-1;color:var(--bad);font-weight:700;font-size:13px}
 .abar{display:flex;height:10px;min-width:120px;border-radius:999px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
 .abar i{display:block;height:100%}
 .b-done{background:var(--ok)} .b-pend{background:var(--warn)} .b-fail{background:var(--bad)}
@@ -1006,6 +1027,79 @@ function agentPanel(){
     <p class="muted small" style="margin-top:8px">Period uses the route date. Pending = not started + in transit. <span class="lg-k b-done"></span> completed <span class="lg-k b-pend"></span> pending <span class="lg-k b-fail"></span> failed</p>
   </div>`;
 }
+function locDay(iso){if(!iso)return '';const d=new Date(iso);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)}
+function addDays(day,n){const d=new Date(day+'T00:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)}
+function daysBetween(a,b){return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5)}
+function ovPeriod(){
+  const k=ui.ovP||'30';const t=today();let from,to=t;
+  if(k==='today')from=t;else if(k==='7')from=addDays(t,-6);else if(k==='30')from=addDays(t,-29);
+  else if(k==='month')from=t.slice(0,8)+'01';else{from=ui.ovFrom||addDays(t,-29);to=ui.ovTo||t;if(to<from)[from,to]=[to,from]}
+  const len=daysBetween(from,to)+1;return {k,from,to,pFrom:addDays(from,-len),pTo:addDays(from,-1),len};
+}
+function ovKpis(from,to){
+  const inP=iso=>{const d=locDay(iso);return d>=from&&d<=to};
+  const R=P(state.requests),T=P(state.tasks),S=P(state.sales);
+  const created=R.filter(r=>inP(r.createdAt));
+  const done=R.filter(r=>r.status==='Completed'&&inP(r.completedAt));
+  const withDate=done.filter(r=>r.reqDate);const onTime=withDate.filter(r=>locDay(r.completedAt)<=r.reqDate);
+  const fl=done.filter(r=>['out','move'].includes((TYPES[r.type]||{}).flow));
+  const ord=fl.reduce((a,r)=>a+(r.origItems||r.items).reduce((x,i)=>x+Number(i.qty),0),0),del=fl.reduce((a,r)=>a+r.items.reduce((x,i)=>x+Number(i.qty),0),0);
+  const sales=S.filter(x=>inP(x.at||(x.date+'T12:00:00')));
+  const failed=T.filter(t=>t.failedAt&&inP(t.failedAt));
+  const returned=R.filter(r=>r.status==='Returned to stock'&&inP(r.closedAt));
+  const lead=done.map(r=>(new Date(r.completedAt)-new Date(r.createdAt))/864e5);
+  return {created:created.length,done:done.length,
+    onTime:withDate.length?100*onTime.length/withDate.length:null,onTimeN:onTime.length,withDate:withDate.length,
+    fulfil:ord?100*Math.min(del,ord)/ord:null,ord,del,
+    sales:sales.reduce((a,x)=>a+Number(x.total||0),0),salesN:sales.length,
+    failed:failed.length,returned:returned.length,failedTasks:failed,
+    lead:lead.length?lead.reduce((a,b)=>a+b,0)/lead.length:null};
+}
+function ovDelta(cur,prev,kind,goodUp){
+  if(cur===null||prev===null||prev===undefined)return '<span class="kd muted">No earlier data</span>';
+  let d,txt;
+  if(kind==='pts'){d=cur-prev;txt=(d>0?'+':'')+d.toFixed(0)+' pts'}
+  else if(kind==='days'){d=cur-prev;txt=(d>0?'+':'')+d.toFixed(1)+' days'}
+  else{if(!prev){return cur?'<span class="kd muted">New this period</span>':'<span class="kd muted">Same as before</span>'}d=(cur-prev)/prev*100;txt=(d>0?'+':'')+d.toFixed(0)+'%'}
+  if(Math.abs(d)<0.05)return '<span class="kd muted">Same as before</span>';
+  const good=goodUp?d>0:d<0;return `<span class="kd ${good?'up':'down'}">${d>0?'▲':'▼'} ${txt} vs previous period</span>`;
+}
+function ovPanel(){
+  const pr=ovPeriod();const a=ovKpis(pr.from,pr.to),b=ovKpis(pr.pFrom,pr.pTo);
+  const pct=v=>v===null?'–':Math.round(v)+'%';
+  const opts=[['today','Today'],['7','Last 7 days'],['30','Last 30 days'],['month','This month'],['custom','Custom']];
+  const tile=(label,val,sub,delta,warn)=>`<div class="kpi"><span class="kl">${label}</span><b class="${warn?'neg':''}">${val}</b><span class="ks">${sub}</span>${delta}</div>`;
+  return `<div class="panel ov">
+    <div class="spread" style="margin-bottom:12px"><div><h2>Performance</h2><p class="muted small">${esc(fmtD(pr.from))}${pr.from!==pr.to?' to '+esc(fmtD(pr.to)):''}, compared with ${esc(fmtD(pr.pFrom))}${pr.pFrom!==pr.pTo?' to '+esc(fmtD(pr.pTo)):''}</p></div>
+      <div class="row"><div class="tabs" role="tablist" style="margin:0;border:0">${opts.map(([k,l])=>`<button class="tab ${pr.k===k?'on':''}" role="tab" aria-selected="${pr.k===k}" data-act="ovP" data-k="${k}">${l}</button>`).join('')}</div>
+      ${pr.k==='custom'?`<label style="flex-direction:row;align-items:center;gap:6px">From<input type="date" data-chg="ovD" data-k="ovFrom" value="${pr.from}"></label><label style="flex-direction:row;align-items:center;gap:6px">To<input type="date" data-chg="ovD" data-k="ovTo" value="${pr.to}"></label>`:''}</div></div>
+    <div class="kpis">
+      ${tile('On-time delivery',pct(a.onTime),a.withDate?`${a.onTimeN} of ${a.withDate} delivered by the requested date`:'No completed orders with a requested date',ovDelta(a.onTime,b.withDate?b.onTime:null,'pts',true),a.onTime!==null&&a.onTime<80)}
+      ${tile('Fulfilment',pct(a.fulfil),a.ord?`${a.del} of ${a.ord} units ordered were delivered`:'No completed deliveries or transfers',ovDelta(a.fulfil,b.ord?b.fulfil:null,'pts',true),a.fulfil!==null&&a.fulfil<95)}
+      ${tile('Sales value',money(a.sales),`${a.salesN} sale${a.salesN===1?'':'s'}, deliveries and direct orders`,ovDelta(a.sales,b.sales,'pct',true),false)}
+      ${tile('Failed deliveries',String(a.failed),a.failed?`${a.returned} returned to stock`:'No failed stops',ovDelta(a.failed,b.failed,'pct',false),a.failed>0)}
+      ${tile('Average lead time',a.lead===null?'–':a.lead.toFixed(1)+' days',`From request to delivery, ${a.done} order${a.done===1?'':'s'} completed`,ovDelta(a.lead,b.done?b.lead:null,'days',false),false)}
+    </div>
+    <p class="small muted" style="margin-top:10px">${a.created} new order${a.created===1?'':'s'} created and ${a.done} completed in this period.</p>
+  </div>`;
+}
+function problemsPanel(){
+  const pr=ovPeriod();const a=ovKpis(pr.from,pr.to);const t0=today();
+  const reasons={};a.failedTasks.forEach(t=>{const k=String(t.failReason||'No reason given').trim();const key=k.toLowerCase();(reasons[key]=reasons[key]||{label:k,n:0}).n++});
+  const top=Object.values(reasons).sort((x,y)=>y.n-x.n).slice(0,5);const fTot=a.failedTasks.length;
+  const over=P(state.requests).filter(r=>r.reqDate&&r.reqDate<t0&&!['Completed','Returned to stock'].includes(r.status)).sort((x,y)=>x.reqDate.localeCompare(y.reqDate));
+  const ids=isAll()?myProjIds():[ui.project];
+  const oldT=(state.tickets||[]).filter(t=>t.status==='Open'&&ids.includes(t.projectId)&&(Date.now()-new Date(t.createdAt))/864e5>2).sort((x,y)=>x.createdAt.localeCompare(y.createdAt));
+  const wait=P(state.requests).filter(r=>stockShort(state,r).length);
+  const box=(title,count,body)=>`<div class="prob"><div class="spread"><h3>${title}</h3><span class="pc ${count?'bad':''}">${count}</span></div>${body}</div>`;
+  const list=(rows,empty)=>rows.length?`<ul class="pl">${rows.join('')}</ul>`:`<p class="muted small">${empty}</p>`;
+  return `<div class="panel"><h2 style="margin-bottom:12px">Where the problems are</h2><div class="probs">
+    ${box('Top failure reasons',fTot,top.length?`<ul class="pl">${top.map(x=>`<li><span>${esc(x.label)}</span><span class="bar-w"><i style="width:${Math.round(100*x.n/fTot)}%"></i></span><strong>${Math.round(100*x.n/fTot)}%</strong></li>`).join('')}</ul>`:'<p class="muted small">No failed stops in this period.</p>')}
+    ${box('Overdue orders',over.length,list(over.slice(0,8).map(r=>{const t=taskOf(state,r.ref);return `<li>${refTag(r.ref)}<span>${esc(partyBase(state,r))}</span><span class="neg small" style="margin-left:auto;white-space:nowrap">${daysBetween(r.reqDate,t0)} day${daysBetween(r.reqDate,t0)===1?'':'s'} late</span><span class="small muted" style="white-space:nowrap">${esc(t&&t.agentId?nm(state.agents,t.agentId):st(r.status).replace(/<[^>]+>/g,''))}</span></li>`}),'Nothing is past its requested date.')+(over.length>8?`<p class="small muted">and ${over.length-8} more</p>`:''))}
+    ${box('Open tickets older than 2 days',oldT.length,list(oldT.slice(0,8).map(t=>`<li>${refTag(t.ref)}<span>${esc(t.title)}</span><span class="small muted" style="margin-left:auto;white-space:nowrap">${esc(tkUserName(t.assigneeId))}, ${Math.floor((Date.now()-new Date(t.createdAt))/864e5)} days</span></li>`),'No old open tickets.'))}
+    ${box('Waiting for stock',wait.length,list(wait.slice(0,8).map(r=>{const sh=stockShort(state,r);return `<li>${refTag(r.ref)}<span>${esc(partyBase(state,r))}</span><span class="small" style="margin-left:auto;color:var(--warn);white-space:nowrap">${sh.length} product${sh.length===1?'':'s'} short</span></li>`}),'No orders are waiting for stock.'))}
+  </div></div>`;
+}
 function pgDashboard(u){
   if(!ui.project)return ph('dashboard')+needProject();
   const R=P(state.requests),T=P(state.tasks),S=P(state.sales);
@@ -1017,7 +1111,10 @@ function pgDashboard(u){
   if(pages.includes('routes')&&T.filter(t=>t.status==='Awaiting route').length)nexts.push([`${T.filter(t=>t.status==='Awaiting route').length} task(s) waiting for a route`,'routes']);
   if(pages.includes('requests'))nexts.push(['Create a new request','requests']);
   const recent=[...R].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,8);
-  return ph('dashboard',scopeOwn()?'Your own orders only: the ones you created or that are assigned to you.':'Where every order stands right now, from request to stock.')+`
+  return ph('dashboard',scopeOwn()?'Your own orders only: the ones you created or that are assigned to you.':'How deliveries are performing, where the problems are, and where every order stands right now.')+`
+  ${ovPanel()}
+  ${problemsPanel()}
+  <h2 style="margin:4px 0 10px">Right now</h2>
   <div class="stats">
     <div class="stat"><b>${R.length}</b><span>Total requests</span></div>
     <div class="stat"><b>${c('New')}</b><span>New, to prepare</span></div>
@@ -1028,7 +1125,7 @@ function pgDashboard(u){
     <div class="stat"><b class="${overdue?'neg':''}">${overdue}</b><span>Overdue, past requested date</span></div>
     <div class="stat"><b>${closed?Math.round(100*c('Completed')/closed)+'%':'–'}</b><span>Success rate${closed?` (${c('Completed')} of ${closed} closed)`:''}</span></div>
   </div>
-  ${nexts.length?`<div class="panel"><h2>Next actions</h2><div class="row">${nexts.map(n=>`<button class="btn ghost" data-act="nav" data-page="${n[1]}">${esc(n[0])}</button>`).join('')}</div></div>`:''}
+  ${nexts.length&&u.role!=='viewer'?`<div class="panel"><h2>Next actions</h2><div class="row">${nexts.map(n=>`<button class="btn ghost" data-act="nav" data-page="${n[1]}">${esc(n[0])}</button>`).join('')}</div></div>`:''}
   ${routeMapPanel()}
   ${agentPanel()}
   <div class="panel"><h2>Latest orders</h2>
@@ -1663,11 +1760,11 @@ function openConfirm(taskId,adjust){
       <form data-form="confirmDone" data-id="${t.id}" novalidate>
       <div class="tbl"><table><thead><tr><th>Product</th><th>Batch</th><th>${(TYPES[r.type]||{}).flow==='in'?'Add back to':'Take from'}</th><th class="num">Ordered</th><th>Final quantity</th><th></th></tr></thead><tbody>${r.items.map((it,i)=>confRow(r,it,i)).join('')}</tbody></table></div>
       <div id="confAdds"></div>
-      <div class="spread" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="confAddLine">Add product</button><strong id="confTot"></strong></div>
+      <div style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="confAddLine">Add product</button></div>
       <template id="confTpl">${confAddRow(r)}</template>
       <label style="margin-top:10px">Reason for the difference<input name="reason" placeholder="e.g. customer took 8 instead of 10"></label>
       <p class="err form-err hide" role="alert" style="margin-top:8px"></p>
-      <div class="row" style="margin-top:12px"><button class="btn ok" type="submit">Confirm with these quantities</button>${short?'':`<button type="button" class="btn plain" data-act="confBack" data-id="${t.id}">Back</button>`}<button type="button" class="btn plain" data-act="closeModal">Cancel</button></div>
+      <div class="row conf-actions" style="margin-top:12px"><strong id="confTot" style="margin-right:auto"></strong><button class="btn ok" type="submit">Confirm with these quantities</button>${short?'':`<button type="button" class="btn plain" data-act="confBack" data-id="${t.id}">Back</button>`}<button type="button" class="btn plain" data-act="closeModal">Cancel</button></div>
       </form>`}
   </div></div>`;
   confTotal();
@@ -2506,6 +2603,7 @@ const acts={
     t.status='Closed';t.closedAt=now();t.closedById=me().id;log(s,'Ticket closed',t.ref,t.id+': '+t.title,'Closed')},'Ticket closed.')},
   tkReopen(el){act(s=>{const t=find(s.tickets,el.dataset.id);if(!t)throw new Error('This ticket no longer exists.');if(t.createdById!==me().id)throw new Error('Only the person who opened this ticket can reopen it.');
     t.status='Open';t.closedAt=null;t.closedById=null;log(s,'Ticket reopened',t.ref,t.id+': '+t.title,'Open')},'Ticket reopened.')},
+  ovP(el){ui.ovP=el.dataset.k;if(el.dataset.k==='custom'){const p=ovPeriod();ui.ovFrom=ui.ovFrom||p.from;ui.ovTo=ui.ovTo||p.to}render()},
   clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
@@ -2619,6 +2717,7 @@ const changes={
   confBatch(el){const a=el.closest('.conf-add');const f=el.closest('form');const t=find(state.tasks,f.dataset.id);const r=find(state.requests,t.requestId);const pid=a.querySelector('[name=ca_product]').value;const l=a.querySelector('[name=ca_loc]');
     if(!el.value){l.innerHTML='<option value="">Choose batch first</option>';return}
     const def=r.items[0]?itemLoc(r.items[0]):'';l.innerHTML='<option value="">Choose location</option>'+confLocOpts(r,pid,el.value,def);confTotal()},
+  ovD(el){ui[el.dataset.k]=el.value;render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
@@ -2669,8 +2768,20 @@ function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n
 function soApplyAll(line){const f=document.getElementById('soForm');if(!f)return;const all=f.elements.soAllLoc.value;const l=line.querySelector('[name=so_loc]'),h=line.querySelector('.solochint'),b=line.querySelector('[name=so_batch]');
   if(!all){if(h)h.textContent='';return}if(!b.value){if(h)h.textContent='';return}
   if([...l.options].some(o=>o.value===all)){l.value=all;if(h){h.textContent=''}}else{l.value='';if(h){h.style.color='var(--bad)';h.textContent='No stock of this batch in '+locName(state,all)+'. Choose another location.'}}}
-function soTotal(){const f=document.getElementById('soForm');if(!f)return;let t=0,q=0,n=0;f.querySelectorAll('.soline').forEach(l=>{const qq=Number(l.querySelector('[name=so_qty]').value)||0;if(l.querySelector('[name=so_product]').value)n++;q+=qq;t+=qq*(Number(l.querySelector('[name=so_price]').value)||0)});
-  document.getElementById('soTotal').innerHTML=`<span>Lines <strong>${n}</strong></span><span>Total quantity <strong>${q}</strong></span><span>Total <strong>${money(t)}</strong></span>`}
+function soCheckLine(l){
+  const g=n=>l.querySelector(`[name=${n}]`);const pid=g('so_product').value;let msg='';
+  if(pid){const p=find(state.products,pid);const bs=batchesFor(state,pid).filter(b=>soLocsFor(pid,b.id).length);const q=Math.floor(Number(g('so_qty').value))||0;
+    if(!bs.length)msg='No stock of this product in any warehouse or sales team member.';
+    else if(g('so_batch').value){const bid=g('so_batch').value;const tot=soLocsFor(pid,bid).reduce((a,x)=>a+x[3],0);const loc=g('so_loc').value;
+      if(loc){const have=qty(state,loc,pid,bid);if(q>have)msg=`Only ${have} ${p&&p.unit?p.unit:''} of batch ${batchNo(state,bid)} in ${locName(state,loc)}. This line needs ${q}.`}
+      else if(q>tot)msg=`Only ${tot} of batch ${batchNo(state,bid)} in stock in total. This line needs ${q}.`;
+      else{const h=l.querySelector('.solochint');if(h&&h.textContent)msg=h.textContent}}
+    else{const tot=bs.reduce((a,b)=>a+soLocsFor(pid,b.id).reduce((x,y)=>x+y[3],0),0);if(q>tot)msg=`Only ${tot} in stock in total across all batches. This line needs ${q}.`}}
+  l.classList.toggle('short',!!msg);let m=l.querySelector('.soshort');if(msg){if(!m){m=document.createElement('div');m.className='soshort';l.appendChild(m)}m.textContent=msg}else if(m)m.remove();
+  return !!msg;
+}
+function soTotal(){const f=document.getElementById('soForm');if(!f)return;const bad=[...f.querySelectorAll('.soline')].filter(soCheckLine).length;let t=0,q=0,n=0;f.querySelectorAll('.soline').forEach(l=>{const qq=Number(l.querySelector('[name=so_qty]').value)||0;if(l.querySelector('[name=so_product]').value)n++;q+=qq;t+=qq*(Number(l.querySelector('[name=so_price]').value)||0)});
+  document.getElementById('soTotal').innerHTML=`<span>Lines <strong>${n}</strong></span><span>Total quantity <strong>${q}</strong></span><span>Total <strong>${money(t)}</strong></span>${bad?`<span class="neg" style="font-weight:700">${bad} line${bad===1?'':'s'} without enough stock</span>`:''}`}
 function soTotalOld(){const f=document.getElementById('soForm');if(!f)return;let t=0;f.querySelectorAll('.soline').forEach(l=>{t+=(Number(l.querySelector('[name=so_qty]').value)||0)*(Number(l.querySelector('[name=so_price]').value)||0)});document.getElementById('soTotal').textContent='Total '+money(t)}
 document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.inp==='confQ'){confTotal();return}if(el.dataset&&el.dataset.inp==='confCode'){const a=el.closest('.conf-add');const sel=a.querySelector('[name=ca_product]');const p=prodByCode(el.value);const keep=el.value;if(p&&sel.value!==p.id){sel.value=p.id;changes.confProd(sel);el.value=keep}return}if(el.dataset&&el.dataset.inp==='sopcode'){const line=el.closest('.soline');const sel=line.querySelector('[name=so_product]');const p=prodByCode(el.value);
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.soProduct(sel);delete sel.dataset.fromCode;
