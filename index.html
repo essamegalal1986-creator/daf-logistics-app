@@ -1152,10 +1152,10 @@ function openStop(taskId){
   const cl=document.querySelector('.drawer [data-act=closeModal]');if(cl)cl.focus();
 }
 function agentPanel(){
-  const per=ui.agentPeriod||'all';
+  const per=ui.agentPeriod||'month';
   const t0=today();const back=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)};
   const from=per==='today'?t0:per==='7'?back(6):per==='30'?back(29):'';
-  const inP=t=>per==='today'?t.date===t0:(!from||(t.date||'')>=from);
+  const inP=t=>per==='today'?t.date===t0:per==='month'?(t.date||'').slice(0,7)===t0.slice(0,7):(!from||(t.date||'')>=from);
   const T=P(state.tasks).filter(t=>t.agentId&&t.status!=='Awaiting route'&&inP(t));
   const rows=AG().map(a=>{
     const ts=T.filter(t=>t.agentId===a.id);
@@ -1169,13 +1169,13 @@ function agentPanel(){
   const bar=r=>{if(!r.total)return '<span class="muted small">No tasks</span>';const w=n=>(100*n/r.total).toFixed(1)+'%';
     return `<div class="abar" role="img" aria-label="${r.done} completed, ${r.pending} pending, ${r.failed} failed"><i class="b-done" style="width:${w(r.done)}"></i><i class="b-pend" style="width:${w(r.pending)}"></i><i class="b-fail" style="width:${w(r.failed)}"></i></div>`};
   const rate=r=>r.total?Math.round(100*r.done/r.total)+'%':'';
-  const periods=[['today','Today'],['7','Last 7 days'],['30','Last 30 days'],['all','All time']];
-  const body=rows.map(r=>[H(`<strong>${esc(r.a.name)}</strong>${r.a.vehicle?`<br><span class="muted small">${esc(r.a.vehicle)}</span>`:''}`),String(r.routes),{h:`<strong>${r.total}</strong>`},{h:r.pending?`<strong style="color:var(--warn)">${r.pending}</strong>`:'0'},String(r.routed),String(r.transit),{h:r.done?`<span style="color:var(--ok)">${r.done}</span>`:'0'},{h:r.failed?`<span class="neg">${r.failed}</span>`:'0'},rate(r),H(bar(r))]);
+  const periods=[['today','Today'],['7','Last 7 days'],['30','Last 30 days'],['month','This month'],['all','All time']];
+  const body=rows.map(r=>[H(`<strong>${esc(r.a.name)}</strong>${isAll()?' '+projTag(r.a.projectId):''}${r.a.vehicle?`<br><span class="muted small">${esc(r.a.vehicle)}</span>`:''}`),String(r.routes),{h:`<strong>${r.total}</strong>`},{h:r.pending?`<strong style="color:var(--warn)">${r.pending}</strong>`:'0'},String(r.routed),String(r.transit),{h:r.done?`<span style="color:var(--ok)">${r.done}</span>`:'0'},{h:r.failed?`<span class="neg">${r.failed}</span>`:'0'},rate(r),H(bar(r))]);
   if(rows.length){const tot=[H('<strong>All agents</strong>'),String(sum('routes')),{h:`<strong>${sum('total')}</strong>`},{h:`<strong>${sum('pending')}</strong>`},String(sum('routed')),String(sum('transit')),String(sum('done')),String(sum('failed')),sum('total')?Math.round(100*sum('done')/sum('total'))+'%':'',''];body.push(tot)}
   return `<div class="panel"><div class="spread" style="margin-bottom:12px"><h2>Logistics agents</h2>
     <div class="tabs" style="margin:0;border:0" role="tablist">${periods.map(([k,l])=>`<button class="tab ${per===k?'on':''}" role="tab" aria-selected="${per===k}" data-act="agentPeriod" data-k="${k}">${l}</button>`).join('')}</div></div>
     ${table([{l:'Agent'},{l:'Routes',num:1},{l:'Assigned',num:1},{l:'Pending',num:1},{l:'Not started',num:1},{l:'In transit',num:1},{l:'Completed',num:1},{l:'Failed',num:1},{l:'Done rate',num:1},{l:'Progress'}],body,'No logistics agents in this project yet.')}
-    <p class="muted small" style="margin-top:8px">Period uses the route date. Pending = not started + in transit. <span class="lg-k b-done"></span> completed <span class="lg-k b-pend"></span> pending <span class="lg-k b-fail"></span> failed</p>
+    <p class="muted small" style="margin-top:8px">${per==='month'?'Month to date: routes dated '+esc(fmtD(t0.slice(0,8)+'01'))+' to the end of this month. ':''}Period uses the route date. Pending = not started + in transit. <span class="lg-k b-done"></span> completed <span class="lg-k b-pend"></span> pending <span class="lg-k b-fail"></span> failed</p>
   </div>`;
 }
 function locDay(iso){if(!iso)return '';const d=new Date(iso);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)}
