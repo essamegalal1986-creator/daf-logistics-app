@@ -1031,10 +1031,12 @@ function locDay(iso){if(!iso)return '';const d=new Date(iso);return d.getFullYea
 function addDays(day,n){const d=new Date(day+'T00:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2)}
 function daysBetween(a,b){return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5)}
 function ovPeriod(){
-  const k=ui.ovP||'30';const t=today();let from,to=t;
+  const k=ui.ovP||'month';const t=today();let from,to=t;
   if(k==='today')from=t;else if(k==='7')from=addDays(t,-6);else if(k==='30')from=addDays(t,-29);
   else if(k==='month')from=t.slice(0,8)+'01';else{from=ui.ovFrom||addDays(t,-29);to=ui.ovTo||t;if(to<from)[from,to]=[to,from]}
-  const len=daysBetween(from,to)+1;return {k,from,to,pFrom:addDays(from,-len),pTo:addDays(from,-1),len};
+  const len=daysBetween(from,to)+1;
+  if(k==='month'){const d=new Date(from+'T00:00:00');d.setMonth(d.getMonth()-1);const pf=d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-01';const pEnd=addDays(from,-1);let pt=pf.slice(0,8)+to.slice(8,10);if(pt>pEnd)pt=pEnd;return {k,from,to,pFrom:pf,pTo:pt,len}}
+  return {k,from,to,pFrom:addDays(from,-len),pTo:addDays(from,-1),len};
 }
 function ovKpis(from,to){
   const inP=iso=>{const d=locDay(iso);return d>=from&&d<=to};
@@ -1102,21 +1104,21 @@ function problemsPanel(){
 }
 function pgDashboard(u){
   if(!ui.project)return ph('dashboard')+needProject();
-  const R=P(state.requests),T=P(state.tasks),S=P(state.sales);
-  const c=st=>R.filter(r=>r.status===st).length;
+  const pr=ovPeriod();const R=P(state.requests).filter(r=>{const d=locDay(r.createdAt);return d>=pr.from&&d<=pr.to}),T=P(state.tasks),RA=P(state.requests);
+  const c=st=>R.filter(r=>r.status===st).length,ca=st=>RA.filter(r=>r.status===st).length;
   const failedAll=c('Failed')+c('Returned to stock');const overdue=R.filter(r=>r.reqDate&&r.reqDate<today()&&!['Completed','Returned to stock'].includes(r.status)).length;const closed=c('Completed')+failedAll;
   const nexts=[];
   const pages=allowedPages(u);
-  if(pages.includes('prepare')&&(c('New')+c('Failed')))nexts.push([`${c('New')+c('Failed')} request(s) to prepare or reassign`,'prepare']);
+  if(pages.includes('prepare')&&(ca('New')+ca('Failed')))nexts.push([`${ca('New')+ca('Failed')} request(s) to prepare or reassign`,'prepare']);
   if(pages.includes('routes')&&T.filter(t=>t.status==='Awaiting route').length)nexts.push([`${T.filter(t=>t.status==='Awaiting route').length} task(s) waiting for a route`,'routes']);
   if(pages.includes('requests'))nexts.push(['Create a new request','requests']);
-  const recent=[...R].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,8);
+  const recent=[...RA].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,8);
   return ph('dashboard',scopeOwn()?'Your own orders only: the ones you created or that are assigned to you.':'How deliveries are performing, where the problems are, and where every order stands right now.')+`
   ${ovPanel()}
   ${problemsPanel()}
-  <h2 style="margin:4px 0 10px">Right now</h2>
+  <h2 style="margin:4px 0 2px">Orders created in this period</h2><p class="muted small" style="margin:0 0 10px">Where the orders created ${esc(fmtD(pr.from))}${pr.from!==pr.to?' to '+esc(fmtD(pr.to)):''} stand right now. Change the period in Performance above.</p>
   <div class="stats">
-    <div class="stat"><b>${R.length}</b><span>Total requests</span></div>
+    <div class="stat"><b>${R.length}</b><span>Requests created</span></div>
     <div class="stat"><b>${c('New')}</b><span>New, to prepare</span></div>
     <div class="stat"><b>${c('Prepared')}</b><span>Prepared, awaiting route</span></div>
     <div class="stat"><b>${c('Routed')+c('In transit')}</b><span>On a route</span></div>
