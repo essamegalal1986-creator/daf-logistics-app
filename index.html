@@ -1052,7 +1052,7 @@ function ovKpis(from,to){
   const withDate=done.filter(r=>r.reqDate);const onTime=withDate.filter(r=>locDay(r.completedAt)<=r.reqDate);
   const fl=done.filter(r=>['out','move'].includes((TYPES[r.type]||{}).flow));
   const ord=fl.reduce((a,r)=>a+(r.origItems||r.items).reduce((x,i)=>x+Number(i.qty),0),0),del=fl.reduce((a,r)=>a+r.items.reduce((x,i)=>x+Number(i.qty),0),0);
-  const sales=S.filter(x=>inP(x.at||(x.date+'T12:00:00')));
+  const sales=S.filter(x=>{const d=saleDay(x);return d>=from&&d<=to});
   const failed=T.filter(t=>t.failedAt&&inP(t.failedAt));
   const returned=R.filter(r=>r.status==='Returned to stock'&&inP(r.closedAt));
   const lead=done.map(r=>(new Date(r.completedAt)-new Date(r.createdAt))/864e5);
@@ -1794,6 +1794,9 @@ function mvData(){
   return {f,rows,sum};
 }
 
+function saleDays(){const m={};(state.sales||[]).forEach(x=>{if(x.direct&&x.date&&x.ref)m[x.ref]=x.date});return m}
+function mvDay(m,sd){return (m.type==='Direct sale'&&sd&&sd[m.ref])||locDay(m.at)}
+function saleDay(x){return (x.direct&&x.date)||locDay(x.at)||x.date}
 function ssPeriod(){const t=today();const k=ui.ssP||'today';let from=t,to=t;
   if(k==='yday'){from=to=addDays(t,-1)}else if(k==='month'){from=t.slice(0,8)+'01'}else if(k==='custom'){from=ui.ssFrom||t;to=ui.ssTo||t;if(to<from)[from,to]=[to,from]}
   return {k,from,to}}
@@ -1809,8 +1812,9 @@ function ssData(){
   const B={open:{},sales:{},io:{}};
   const add=(blk,pid,c,v)=>{const r=B[blk][pid]=B[blk][pid]||{};r[c]=(r[c]||0)+v};
   const colOf=l=>{if(l.startsWith('S:'))return salesKey;if(!(l in seen))addCol(l,locName(state,l));return l};
+  const sd=saleDays();
   state.movements.forEach(m=>{
-    if(!pset.has(m.productId))return;const d=locDay(m.at);const isOpen=m.ref==='OPENING'||d<from;
+    if(!pset.has(m.productId))return;const d=mvDay(m,sd);const isOpen=m.ref==='OPENING'||d<from;
     if(!isOpen&&d>to)return;const q=Number(m.qty)||0;
     if(isLoc(m.from)){const c=colOf(m.from);if(isOpen)add('open',m.productId,c,-q);else if(/^C:/.test(m.to||''))add('sales',m.productId,c,q);else add('io',m.productId,c,-q)}
     if(isLoc(m.to)){const c=colOf(m.to);if(isOpen)add('open',m.productId,c,q);else add('io',m.productId,c,q)}
@@ -1840,7 +1844,7 @@ function pgStockSum(u){
   return ph('stocksum','Opening balance, sales, in and out, and remaining stock for every product, by warehouse and for the sales team together. Remaining = opening − sales + in and out.')+`
   <div class="panel"><div class="spread"><div><h2>Period</h2><p class="muted small">${esc(ssDay(d.from,d.to))}${d.match===true?' · <span class="ss-ok">Remaining stock matches the live inventory.</span>':d.match===false?' · <span class="neg">Remaining stock does not match the live inventory, check the stock movements.</span>':''}</p></div>
     <div class="row"><div class="tabs" role="tablist" style="margin:0;border:0">${opts.map(([k,l])=>`<button class="tab ${pr.k===k?'on':''}" role="tab" aria-selected="${pr.k===k}" data-act="ssP" data-k="${k}">${l}</button>`).join('')}</div>
-    ${pr.k==='custom'?`<label style="flex-direction:row;align-items:center;gap:6px">From<input type="date" data-chg="ssD" data-k="ssFrom" value="${d.from}"></label><label style="flex-direction:row;align-items:center;gap:6px">To<input type="date" data-chg="ssD" data-k="ssTo" value="${d.to}"></label>`:''}
+    <label style="flex-direction:row;align-items:center;gap:6px">From<input type="date" data-chg="ssD" data-k="ssFrom" value="${d.from}"></label><label style="flex-direction:row;align-items:center;gap:6px">To<input type="date" data-chg="ssD" data-k="ssTo" value="${d.to}"></label>
     <button class="btn ghost sm" data-act="ssExport">Export to Excel</button></div></div>
     <p class="small muted" style="margin-top:8px">Sales = completed deliveries and direct orders. In and Out = received, returned, transferred and back to stock, as one net number per location. Opening stock entries always count in the opening balance. ${d.hidden?`${d.hidden} product${d.hidden===1?'':'s'} with no stock or movement hidden. `:''}<label style="display:inline-flex;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-chg="ssAll" ${ui.ssAll?'checked':''}> Show all products</label></p></div>
   ${d.prods.length?d.blocks.map(blk).join(''):'<div class="panel"><p class="muted">No products with stock in this project yet.</p></div>'}`;
@@ -2793,7 +2797,7 @@ const changes={
     if(!el.value){l.innerHTML='<option value="">Choose batch first</option>';return}
     const def=r.items[0]?itemLoc(r.items[0]):'';l.innerHTML='<option value="">Choose location</option>'+confLocOpts(r,pid,el.value,def);confTotal()},
   ovD(el){ui[el.dataset.k]=el.value;render()},
-  ssD(el){ui[el.dataset.k]=el.value;render()},
+  ssD(el){const p=ssPeriod();ui.ssFrom=p.from;ui.ssTo=p.to;ui[el.dataset.k]=el.value;ui.ssP='custom';render()},
   ssAll(el){ui.ssAll=el.checked;render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
