@@ -264,6 +264,58 @@ button.ref:hover{filter:brightness(.95)}
 .ss-tbl tr.tot td{font-weight:700;background:var(--sunk);border-top:2px solid var(--line)}.ss-tbl td.tc,.ss-tbl th.tc{font-weight:700;background:var(--sunk)}
 .ss-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.ss-ok{color:var(--ok)}
 .ps-q{margin-bottom:4px;font-size:13px;padding:6px 10px}.ps-q.ps-none{border-color:var(--bad);background:#fdecec}
+.rmap2 .rsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px}
+.rsum-i{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--sunk);display:flex;flex-direction:column}
+.rsum-i b{font-size:22px;font-family:var(--head,inherit);line-height:1.1}.rsum-i span{font-size:12px;color:var(--muted)}
+.rsum-i.ok:not(.zero) b{color:var(--ok)}.rsum-i.bad:not(.zero){border-color:var(--bad)}.rsum-i.bad:not(.zero) b{color:var(--bad)}.rsum-i.warn:not(.zero){border-color:var(--warn)}.rsum-i.warn:not(.zero) b{color:var(--warn)}.rsum-i.go:not(.zero) b{color:var(--route)}
+.trip{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;background:var(--surface);overflow:hidden}
+.trip.attn{border-color:var(--bad);box-shadow:inset 4px 0 0 var(--bad)}
+.trip.collapsed{background:var(--sunk)}
+.trip-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 14px;background:var(--sunk);border-bottom:1px solid var(--line)}
+.trip.collapsed .trip-h{border-bottom:0}
+.trip-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--navy);color:#fff;font-weight:700;font-size:13px}.trip-ic.done{background:var(--ok)}.trip-ic.bad{background:var(--bad)}
+.trip-n{font-size:15px}.trip-h .who-a{display:flex;align-items:center;gap:8px}
+.trip-r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.tcount{font-weight:800;font-size:14px;padding:2px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}.tcount.ok{color:var(--ok);border-color:var(--ok)}
+.tflag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px}.tflag.bad{background:var(--bad-soft);color:var(--bad)}.tflag.warn{background:var(--warn-soft);color:var(--warn)}
+.stops{list-style:none;margin:0;padding:14px 10px 6px;display:flex;flex-wrap:wrap;row-gap:14px}
+.sc{position:relative;width:230px;flex:none;display:flex;flex-direction:column}
+.sc.endc{width:96px}
+.sc-rail{position:relative;height:30px;display:flex;align-items:center;padding-left:6px}
+.sc-rail::before{content:"";position:absolute;left:0;right:0;top:13px;height:4px;background:var(--line);z-index:0}
+.sc.trav .sc-rail::before{background:var(--ok)}
+.sc.s-failed .sc-rail::before{background:var(--bad)}
+.sc.s-in-transit .sc-rail::before{background:linear-gradient(90deg,var(--route) 50%,var(--line) 50%)}
+.sc-dot{position:relative;z-index:1;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;background:var(--surface);border:3px solid var(--line);color:var(--muted)}
+.sc.s-completed .sc-dot{background:var(--ok);border-color:var(--ok);color:#fff}.sc.s-failed .sc-dot{background:var(--bad);border-color:var(--bad);color:#fff}
+.sc.s-in-transit .sc-dot{border-color:var(--route);color:var(--route);box-shadow:0 0 0 4px var(--route-soft)}
+.sc-dot.end{border-radius:8px;background:var(--navy);border-color:var(--navy);color:#fff;font-size:10px;width:34px}.sc-dot.end.open{background:var(--surface);color:var(--navy);border-style:dashed}
+.sc-next{position:relative;z-index:1;margin-left:8px;font-size:11px;font-weight:800;color:#fff;background:var(--signal,#F5A524);padding:1px 8px;border-radius:999px;color:#2a1a00}
+.end-l{display:flex;flex-direction:column;padding:6px 6px 0}
+.sc-card{margin:6px 10px 0 0;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--surface);cursor:pointer;display:flex;flex-direction:column;gap:5px;flex:1;transition:border-color .15s,box-shadow .15s}
+.sc-card:hover,.sc-card:focus-visible{border-color:var(--route);box-shadow:0 2px 10px rgba(43,58,143,.12);outline:none}
+.sc.is-next .sc-card{border-color:var(--signal,#F5A524);box-shadow:0 0 0 2px rgba(245,165,36,.25)}
+.sc.s-failed .sc-card{border-color:var(--bad);background:var(--bad-soft)}
+.sc.is-late:not(.s-failed) .sc-card{border-color:var(--warn)}
+.sc-top{display:flex;align-items:center;gap:8px}.sc-title{font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+.sc-sub{font-size:12px;color:var(--muted)}
+.sc-ref{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.sc-ref .ref{font-size:11px;line-height:18px}
+.sc-note{font-size:12px;background:#fff7d6;border:1px solid #f1dc8a;color:#5c4700;border-radius:6px;padding:3px 7px}
+.sc-note span{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.sc-late{font-size:12px;font-weight:800;color:var(--bad)}.sc-warn{font-size:12px;color:var(--warn)}
+.sc-reason{font-size:12px;color:var(--bad)}
+.schip{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px}
+.schip.ok{background:var(--ok-soft);color:var(--ok)}.schip.bad{background:var(--bad-soft);color:var(--bad)}.schip.go{background:var(--route-soft);color:var(--route)}.schip.idle{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.tyic{width:26px;height:26px;flex:none;border-radius:7px;display:grid;place-items:center}
+.ty-delivery{background:var(--route-soft);color:var(--navy)}.ty-received{background:var(--ok-soft);color:var(--ok)}.ty-transfer{background:var(--warn-soft);color:var(--warn)}.ty-return{background:var(--warn-soft);color:var(--warn)}.ty-cancelled{background:var(--bad-soft);color:var(--bad)}.ty-documentation{background:var(--sunk);color:var(--muted)}
+.drawer-bg{place-items:stretch end;padding:0}
+.drawer{background:var(--surface);color:var(--ink);width:min(560px,100vw);height:100vh;overflow-y:auto;padding:20px 22px;box-shadow:-10px 0 30px rgba(0,0,0,.25);overscroll-behavior:contain}
+.kvs{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:12px 0}
+.kv{display:flex;flex-direction:column;font-size:13px}.kv>span:first-child{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.dw-hist{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.dw-hist li{display:flex;flex-direction:column;padding:4px 0 10px 12px;position:relative}.dw-hist li::before{content:"";position:absolute;left:-6px;top:9px;width:10px;height:10px;border-radius:50%;background:var(--route)}
+@media (max-width:640px){.sc{width:100%}.sc.endc{width:50%}.kvs{grid-template-columns:1fr}.trip-r{margin-left:0;width:100%}}
+@media (prefers-color-scheme:dark){.sc-note{background:#3a3214;border-color:#5c4d17;color:#f3e2a2}.sc.s-failed .sc-card{background:var(--surface)}}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .kpi{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;background:var(--surface)}
 .kpi .kl{font-size:13px;font-weight:700;color:var(--muted)}
@@ -981,31 +1033,123 @@ function stopTitle(r){
   if(r.type==='Received')return r.supplier?'From '+r.supplier:'Receive stock';
   const c=find(state.customers,r.customerId);return c?c.name:'Customer';
 }
-function routeMetro(rt){
+const TYPE_IC={Delivery:'<path d="M2 7h12v9H2zM14 10h4l3 3v3h-7"/><circle cx="6" cy="17.5" r="1.7"/><circle cx="17" cy="17.5" r="1.7"/>',
+  Received:'<path d="M12 3v11M7.5 9.5 12 14l4.5-4.5M4 15v5h16v-5"/>',Transfer:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  Return:'<path d="M9 5 4 10l5 5"/><path d="M4 10h10a5 5 0 0 1 0 10h-3"/>',Cancelled:'<circle cx="12" cy="12" r="8"/><path d="m8.5 8.5 7 7"/>',Documentation:'<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>'};
+function typeIc(type){return `<span class="tyic ty-${slug(type)}" title="${esc(type)}" aria-label="${esc(type)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TYPE_IC[type]||TYPE_IC.Delivery}</svg></span>`}
+function hm(iso){if(!iso)return '';return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+function durTxt(ms){const m=Math.max(0,Math.round(ms/6e4));const h=Math.floor(m/60);return h?h+'h '+(m%60)+'m':m+'m'}
+function closedAt(t){return t.status==='Completed'?t.completedAt:t.status==='Failed'?t.failedAt:null}
+function tripInfo(rt){
+  const t0=today();
   const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).filter(t=>ownTrip(rt)||visTask(t)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
-  const closed=x=>['Completed','Failed'].includes(x.t.status);
-  const moved=x=>closed(x)||x.t.status==='In transit';
-  const done=stops.filter(x=>x.t.status==='Completed').length,failed=stops.filter(x=>x.t.status==='Failed').length,pend=stops.length-done-failed;
-  const allClosed=stops.length&&stops.every(closed);
-  const ag=find(state.agents,rt.agentId)||{};
-  const w=n=>stops.length?(100*n/stops.length).toFixed(1)+'%':'0';
-  const nodes=[`<li class="mnode endpt start"><span class="mdot" aria-hidden="true">GO</span><div class="mlbl"><strong>Start</strong><span class="muted">${esc(ag.vehicle||'Departure')}</span></div></li>`];
-  stops.forEach((x,i)=>{const c=x.r.customerId&&find(state.customers,x.r.customerId);const icon=x.t.status==='Completed'?'✓':x.t.status==='Failed'?'✕':String(i+1);
-    nodes.push(`<li class="mnode s-${slug(x.t.status)} ${moved(x)?'trav':''}"><span class="mdot" aria-hidden="true">${icon}</span><div class="mlbl"><span class="muted">Stop ${i+1}${c&&c.code?', '+esc(c.code):''}</span><strong>${esc(stopTitle(x.r))}</strong>${x.r.notes?`<span class="small" style="color:var(--warn);font-weight:700" title="${esc(x.r.notes)}">Has note</span>`:''}${x.r.reqDate?`<span class="muted" style="font-size:11px">Req. ${esc(fmtD(x.r.reqDate))}</span>`:''}<span class="muted">${esc(govName(x.r.govId)||x.r.type)}</span>${refTag(x.r.ref)}${st(x.t.status==='Routed'?'Not started':x.t.status)}${x.t.failReason?`<span class="small" style="color:var(--bad)">${esc(x.t.failReason)}</span>`:''}</div></li>`)});
-  nodes.push(`<li class="mnode endpt finish ${allClosed?'trav done':''}"><span class="mdot" aria-hidden="true">${allClosed?'✓':'END'}</span><div class="mlbl"><strong>Finish</strong><span class="muted">${allClosed?'Route done':pend+' stop'+(pend===1?'':'s')+' left'}</span></div></li>`);
-  return `<div class="rmap-route">
-    <div class="rmap-head"><span class="code" style="font-size:15px">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.note?`<span>${esc(rt.note)}</span>`:''}
-      <span class="who-a"><span class="avatar" aria-hidden="true">${esc(initials(ag.name))}</span><span><span class="muted small">Assigned to</span> <strong>${esc(ag.name||'No agent')}</strong></span></span>
-      ${rt.groupId?`<span class="muted small">${esc(nm(state.routeGroups,rt.groupId))}</span>`:''}
-      <span class="rmap-prog">${done} done${failed?`, ${failed} failed`:''} of ${stops.length}<span class="abar" role="img" aria-label="${done} completed, ${pend} pending, ${failed} failed"><i class="b-done" style="width:${w(done)}"></i><i class="b-pend" style="width:${w(pend)}"></i><i class="b-fail" style="width:${w(failed)}"></i></span>${st(routeStatus(rt))}</span>
-    </div>
-    <div class="metro-scroll"><ol class="metro" aria-label="Stops of ${esc(rt.name)}, start to finish">${nodes.join('')}</ol></div>
-  </div>`;
+  const isClosed=x=>['Completed','Failed'].includes(x.t.status);
+  stops.forEach(x=>{x.closed=isClosed(x);x.late=!x.closed&&((x.r.reqDate&&x.r.reqDate<t0)||(rt.date<t0));
+    x.lateDays=x.late?Math.max(1,daysBetween(x.r.reqDate&&x.r.reqDate<t0?x.r.reqDate:rt.date,t0)):0;
+    x.lateDone=x.t.status==='Completed'&&x.r.reqDate&&x.t.completedAt&&locDay(x.t.completedAt)>x.r.reqDate});
+  const n=k=>stops.filter(x=>x.t.status===k).length;
+  const done=n('Completed'),failed=n('Failed'),transit=n('In transit'),waiting=n('Routed'),late=stops.filter(x=>x.late).length;
+  const allClosed=stops.length>0&&stops.every(x=>x.closed);
+  const starts=stops.map(x=>x.t.startedAt||closedAt(x.t)).filter(Boolean).sort();const ends=stops.map(x=>closedAt(x.t)).filter(Boolean).sort();
+  const startAt=starts[0]||null,endAt=allClosed?ends[ends.length-1]:null;
+  const rank=(failed||late)?0:allClosed?3:(transit||done)?1:2;
+  const next=allClosed?null:stops.find(x=>!x.closed);
+  return {stops,done,failed,transit,waiting,late,allClosed,startAt,endAt,rank,next};
+}
+function stopCard(x,i,info){
+  const t=x.t,r=x.r;const c=r.customerId&&find(state.customers,r.customerId);
+  const units=r.items.reduce((a,it)=>a+Number(it.qty||0),0),np=new Set(r.items.map(it=>it.productId)).size;
+  const isNext=info.next===x;
+  let stat;
+  if(t.status==='Completed')stat=`<span class="schip ok">✓ Done ${esc(hm(t.completedAt))}</span>`;
+  else if(t.status==='Failed')stat=`<span class="schip bad">✕ Failed ${esc(hm(t.failedAt))}</span>`;
+  else if(t.status==='In transit')stat=`<span class="schip go">On the way${t.startedAt?' since '+esc(hm(t.startedAt)):''}</span>`;
+  else stat=`<span class="schip idle">Not started</span>`;
+  const dot=t.status==='Completed'?'✓':t.status==='Failed'?'✕':String(i+1);
+  const where=[c&&c.code,govName(r.govId)].filter(Boolean).join(' · ');
+  return `<li class="sc s-${slug(t.status)} ${x.closed?'trav':''} ${x.late?'is-late':''} ${isNext?'is-next':''}">
+    <div class="sc-rail"><span class="sc-dot" aria-hidden="true">${dot}</span>${isNext?'<span class="sc-next">Next stop</span>':''}</div>
+    <div class="sc-card" data-act="stopOpen" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="Stop ${i+1}, ${esc(stopTitle(r))}, ${esc(t.status)}. Open details">
+      <div class="sc-top">${typeIc(r.type)}<strong class="sc-title">${esc(stopTitle(r))}</strong></div>
+      <div class="sc-sub">Stop ${i+1}${where?' · '+esc(where):''}</div>
+      <div class="sc-ref">${refTag(r.ref)}<span class="muted small">${np?`${np} product${np===1?'':'s'} · ${units} unit${units===1?'':'s'}`:'No products'}</span></div>
+      ${r.notes?`<div class="sc-note" title="${esc(r.notes)}"><span>${esc(r.notes)}</span></div>`:''}
+      ${x.late?`<div class="sc-late">◷ ${x.lateDays} day${x.lateDays===1?'':'s'} late</div>`:x.lateDone?`<div class="sc-warn">Delivered after the requested date</div>`:''}
+      <div class="sc-stat">${stat}</div>
+      ${t.status==='Failed'&&t.failReason?`<div class="sc-reason">${esc(t.failReason)}</div>`:''}
+    </div></li>`;
+}
+function tripCard(rt){
+  const info=tripInfo(rt);const ag=find(state.agents,rt.agentId)||{};
+  const foldable=info.allClosed&&!info.failed;const open=!foldable||(ui.rmOpen||{})[rt.id];
+  const timeTxt=info.allClosed?(info.endAt?`Finished ${hm(info.endAt)}${info.startAt&&info.startAt!==info.endAt?' · took '+durTxt(new Date(info.endAt)-new Date(info.startAt)):''}`:'Finished')
+    :info.startAt?`Started ${hm(info.startAt)} · running ${durTxt(Date.now()-new Date(info.startAt))}`:'Not started yet';
+  const flags=[info.failed?`<span class="tflag bad">${info.failed} failed</span>`:'',info.late?`<span class="tflag warn">${info.late} late</span>`:''].join('');
+  const head=`<div class="trip-h">
+      <span class="trip-ic ${info.failed||info.late?'bad':info.allClosed?'done':''}" aria-hidden="true">${info.failed||info.late?'!':info.allClosed?'✓':IC.routes?`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC.routes}</svg>`:'▶'}</span>
+      <span class="code trip-n">${esc(rt.name)}</span>${projTag(rt.projectId)}
+      <span class="who-a"><span class="avatar" aria-hidden="true">${esc(initials(ag.name))}</span><strong>${esc(ag.name||'No agent')}</strong></span>
+      <span class="muted small">${esc([rt.groupId&&nm(state.routeGroups,rt.groupId),ag.vehicle].filter(Boolean).join(' · '))}</span>
+      ${flags}
+      <span class="trip-r"><span class="muted small">${esc(timeTxt)}</span><span class="tcount ${info.allClosed?'ok':''}">${info.done}/${info.stops.length}</span>
+      ${foldable?`<button class="btn plain sm" data-act="rmToggle" data-id="${esc(rt.id)}" aria-expanded="${!!open}">${open?'Hide stops':'Show stops'}</button>`:''}</span>
+    </div>`;
+  if(!open)return `<div class="trip done collapsed">${head}</div>`;
+  return `<div class="trip ${info.rank===0?'attn':''} ${info.allClosed?'done':''}">${head}
+    ${rt.note?`<p class="small muted" style="padding:6px 14px 0;margin:0">${esc(rt.note)}</p>`:''}
+    <ol class="stops" aria-label="Stops of ${esc(rt.name)}">
+      <li class="sc endc ${info.startAt?'trav':''}"><div class="sc-rail"><span class="sc-dot end" aria-hidden="true">GO</span></div><div class="end-l"><strong>Start</strong><span class="muted small">${esc(info.startAt?hm(info.startAt):'Departure')}</span></div></li>
+      ${info.stops.map((x,i)=>stopCard(x,i,info)).join('')}
+      <li class="sc endc ${info.allClosed?'trav':''}"><div class="sc-rail"><span class="sc-dot end ${info.allClosed?'':'open'}" aria-hidden="true">${info.allClosed?'✓':'END'}</span></div><div class="end-l"><strong>Finish</strong><span class="muted small">${info.allClosed?esc(info.endAt?hm(info.endAt):'Done'):`${info.stops.length-info.done-info.failed} left`}</span></div></li>
+    </ol></div>`;
 }
 function routeMapPanel(){
-  const days=[['Today',dayStr(0)],['Tomorrow',dayStr(1)]];
-  return `<div class="panel"><h2 style="margin-bottom:14px">Route map</h2>${days.map(([lbl,d])=>{const rs=P(state.routes).filter(r=>r.date===d).sort((a,b)=>a.name.localeCompare(b.name));
-    return `<section class="rmap-day"><h3>${lbl} <span class="muted small" style="font-family:var(--body);font-weight:500">${esc(fmtD(d))}, ${rs.length} route${rs.length===1?'':'s'}</span></h3>${rs.length?rs.map(routeMetro).join(''):`<p class="muted small" style="padding:10px 0 4px">No routes planned for ${lbl.toLowerCase()}.</p>`}</section>`}).join('')}</div>`;
+  const day=ui.rmDay||'today';const d=day==='tomorrow'?dayStr(1):dayStr(0);
+  const all=P(state.routes).filter(r=>r.date===d);
+  const agents=[...new Set(all.map(r=>r.agentId).filter(Boolean))].map(id=>[id,nm(state.agents,id)]).sort((a,b)=>a[1].localeCompare(b[1]));
+  if(ui.rmAgent&&!agents.some(a=>a[0]===ui.rmAgent))ui.rmAgent='';
+  const rs=all.filter(r=>!ui.rmAgent||r.agentId===ui.rmAgent).map(r=>({r,i:tripInfo(r)})).sort((a,b)=>a.i.rank-b.i.rank||a.r.name.localeCompare(b.r.name));
+  const sum=k=>rs.reduce((a,x)=>a+x.i[k],0);const stops=rs.reduce((a,x)=>a+x.i.stops.length,0);
+  const pill=(v,l,cls)=>`<div class="rsum-i ${cls||''} ${v?'':'zero'}"><b>${v}</b><span>${l}</span></div>`;
+  return `<div class="panel rmap2">
+    <div class="spread" style="margin-bottom:12px"><div><h2>Route map</h2><p class="muted small">${esc(fmtD(d))}. Trips that need attention come first; finished trips fold away.</p></div>
+      <div class="row"><div class="tabs" role="tablist" style="margin:0;border:0">${[['today','Today'],['tomorrow','Tomorrow']].map(([k,l])=>`<button class="tab ${day===k?'on':''}" role="tab" aria-selected="${day===k}" data-act="rmDay" data-k="${k}">${l}</button>`).join('')}</div>
+      <label style="flex-direction:row;align-items:center;gap:6px">Agent<select data-chg="rmAgent"><option value="">All agents</option>${agents.map(a=>`<option value="${esc(a[0])}" ${ui.rmAgent===a[0]?'selected':''}>${esc(a[1])}</option>`).join('')}</select></label></div></div>
+    <div class="rsum">${pill(rs.length,'Trips')}${pill(stops,'Stops')}${pill(sum('done'),'Done','ok')}${pill(sum('transit'),'On the way','go')}${pill(sum('waiting'),'Not started')}${pill(sum('failed'),'Failed','bad')}${pill(sum('late'),'Late','warn')}</div>
+    ${rs.length?rs.map(x=>tripCard(x.r)).join(''):`<p class="muted small" style="padding:10px 0 4px">No routes planned for ${day==='tomorrow'?'tomorrow':'today'}${ui.rmAgent?' for this agent':''}.</p>`}
+  </div>`;
+}
+function openStop(taskId){
+  const t=find(state.tasks,taskId);if(!t)return;const r=find(state.requests,t.requestId);if(!r)return;
+  const rt=t.routeId&&find(state.routes,t.routeId);const ag=find(state.agents,t.agentId)||{};const c=r.customerId&&find(state.customers,r.customerId);
+  const pr=id=>find(state.products,id)||{};
+  const orig={};(r.origItems||[]).forEach(it=>{const k=it.productId+'|'+(it.batchId||'');orig[k]=(orig[k]||0)+Number(it.qty)});
+  const rows=r.items.map(it=>{const k=it.productId+'|'+(it.batchId||'');const o=r.adjusted&&orig[k]!==undefined&&orig[k]!==Number(it.qty)?` <span class="muted small">(ordered ${orig[k]})</span>`:'';
+    return `<tr><td><span class="code">${esc(pr(it.productId).code||'')}</span> ${esc(pr(it.productId).name||'?')}</td><td>${esc(batchNo(state,it.batchId)||'')}</td><td class="num">${esc(String(it.qty))}${o}</td><td>${esc(locName(state,itemLoc(it))||'')}</td></tr>`}).join('');
+  const hist=state.log.filter(l=>l.ref===r.ref).slice().reverse();
+  const tks=(state.tickets||[]).filter(x=>x.ref===r.ref).filter(tkCanSee);
+  const kv=(k,v)=>v?`<div class="kv"><span>${k}</span><span>${v}</span></div>`:'';
+  document.getElementById('modal').innerHTML=`<div class="modal-bg drawer-bg" data-act="closeModal" data-self="1"><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dwt">
+    <div class="spread"><div class="row" style="gap:8px">${typeIc(r.type)}<h2 id="dwt" style="margin:0">${esc(stopTitle(r))}</h2></div><button class="btn plain sm" data-act="closeModal" aria-label="Close">✕</button></div>
+    <div class="row" style="gap:8px;margin:8px 0 4px">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span>${st(t.status==='Routed'?'Not started':t.status)}</div>
+    ${chain(state,r)}
+    <div class="kvs">
+      ${kv('Customer',c?esc((c.code?c.code+' · ':'')+c.name):'')}${kv('Address',c&&c.address?esc(c.address):'')}${kv('Phone',c&&c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'')}
+      ${kv('Governorate',esc(govName(r.govId)))}${kv('Requested date',r.reqDate?esc(fmtD(r.reqDate)):'')}
+      ${kv('Trip',rt?esc(rt.name+' · '+fmtD(rt.date)):'')}${kv('Agent',esc(ag.name||''))}
+      ${kv('Started',t.startedAt?esc(fmtT(t.startedAt)):'')}${kv('Completed',t.completedAt?esc(fmtT(t.completedAt)):'')}${kv('Failed',t.failedAt?esc(fmtT(t.failedAt))+(t.failReason?' · '+esc(t.failReason):''):'')}
+    </div>
+    ${r.notes?`<div class="reqnote"><strong>Note:</strong> ${esc(r.notes)}</div>`:''}
+    ${r.adjusted&&r.adjustReason?`<p class="small" style="margin:8px 0"><strong>Changed at completion:</strong> ${esc(r.adjustReason)}</p>`:''}
+    <h3 style="margin:16px 0 6px">Products</h3>
+    <div class="tbl"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Qty</th><th>From</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted">No products</td></tr>'}</tbody></table></div>
+    <h3 style="margin:16px 0 6px">Tickets</h3>
+    ${tks.length?`<ul class="pl">${tks.map(x=>`<li><span>${esc(x.title)}</span><span class="small muted" style="margin-left:auto">${esc(x.status)}</span></li>`).join('')}</ul>`:'<p class="muted small">No tickets on this order.</p>'}
+    ${allowedPages(me()).includes('tickets')?`<button class="btn ghost sm" data-act="tkGo" data-ref="${esc(r.ref)}" style="margin-top:6px">Go to tickets</button>`:''}
+    <h3 style="margin:16px 0 6px">History</h3>
+    <ol class="dw-hist">${hist.map(l=>`<li><span class="muted small">${esc(fmtT(l.at))}</span><strong>${esc(l.action)}</strong><span class="small">${esc(l.detail||'')}</span><span class="muted small">${esc(l.by||'')}</span></li>`).join('')||'<li class="muted small">No history yet.</li>'}</ol>
+  </aside></div>`;
+  const cl=document.querySelector('.drawer [data-act=closeModal]');if(cl)cl.focus();
 }
 function agentPanel(){
   const per=ui.agentPeriod||'all';
@@ -1835,6 +1979,7 @@ document.addEventListener('input',ev=>{const el=ev.target;if(!el||!el.dataset||!
     if(k==='invQ'){ui.inv=ui.inv||{};ui.inv.q=el.value}
     const pos=el.selectionStart;render();const n=document.querySelector('[data-live="'+k+'"]');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(e){}}
   },200)},true);
+document.addEventListener('keydown',ev=>{const el=ev.target;if((ev.key==='Enter'||ev.key===' ')&&el&&el.getAttribute&&el.getAttribute('role')==='button'&&el.dataset.act&&el.tagName!=='BUTTON'){ev.preventDefault();el.click()}});
 new MutationObserver(()=>enhanceProdSelects()).observe(document.documentElement,{childList:true,subtree:true});
 function ssPeriod(){const t=today();const k=ui.ssP||'today';let from=t,to=t;
   if(k==='yday'){from=to=addDays(t,-1)}else if(k==='month'){from=t.slice(0,8)+'01'}else if(k==='custom'){from=ui.ssFrom||t;to=ui.ssTo||t;if(to<from)[from,to]=[to,from]}
@@ -2704,6 +2849,9 @@ const acts={
     if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(out);ws['!cols']=[{wch:12},{wch:42},...d.cols.map(c=>({wch:Math.max(10,c.label.length+2)})),{wch:10}];XLSX.utils.book_append_sheet(wb,ws,'Stock summary');await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
     else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile(base+'.csv','\ufeff'+out.map(r=>r.map(q).join(',')).join('\n'))}
   },
+  rmDay(el){ui.rmDay=el.dataset.k;render()},
+  rmToggle(el){ui.rmOpen=ui.rmOpen||{};ui.rmOpen[el.dataset.id]=!ui.rmOpen[el.dataset.id];render()},
+  stopOpen(el){openStop(el.dataset.id)},
   ssP(el){ui.ssP=el.dataset.k;if(el.dataset.k==='custom'){const p=ssPeriod();ui.ssFrom=ui.ssFrom||p.from;ui.ssTo=ui.ssTo||p.to}render()},
   async mvExport(){
     const {f,rows,sum}=mvData();const pr=id=>find(state.products,id)||{};
@@ -2837,6 +2985,7 @@ const changes={
     if(!el.value){l.innerHTML='<option value="">Choose batch first</option>';return}
     const def=r.items[0]?itemLoc(r.items[0]):'';l.innerHTML='<option value="">Choose location</option>'+confLocOpts(r,pid,el.value,def);confTotal()},
   ovD(el){ui[el.dataset.k]=el.value;render()},
+  rmAgent(el){ui.rmAgent=el.value;render()},
   ssD(el){const p=ssPeriod();ui.ssFrom=p.from;ui.ssTo=p.to;ui[el.dataset.k]=el.value;ui.ssP='custom';render()},
   ssAll(el){ui.ssAll=el.checked;render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
