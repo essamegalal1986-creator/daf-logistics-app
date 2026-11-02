@@ -263,6 +263,7 @@ button.ref:hover{filter:brightness(.95)}
 .ss-tbl table{min-width:100%}.ss-tbl th,.ss-tbl td{white-space:nowrap}.ss-tbl td.pn{white-space:normal;min-width:220px}
 .ss-tbl tr.tot td{font-weight:700;background:var(--sunk);border-top:2px solid var(--line)}.ss-tbl td.tc,.ss-tbl th.tc{font-weight:700;background:var(--sunk)}
 .ss-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.ss-ok{color:var(--ok)}
+.ps-q{margin-bottom:4px;font-size:13px;padding:6px 10px}.ps-q.ps-none{border-color:var(--bad);background:#fdecec}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .kpi{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;background:var(--surface)}
 .kpi .kl{font-size:13px;font-weight:700;color:var(--muted)}
@@ -1581,7 +1582,7 @@ function pgSales(u){
         <label>Customer ID <button type="button" class="link" data-act="soNewOpen" style="font-size:13px;align-self:flex-start">+ New customer</button><input name="soCode" data-inp="soCust" list="soCodes" placeholder="Type the customer ID" autocomplete="off" spellcheck="false"><datalist id="soCodes">${P(state.customers).map(c=>`<option value="${esc(c.code||'')}">${esc(c.name)}</option>`).join('')}</datalist></label>
         <label>Customer<select name="customerId" data-chg="soCustSel">${opts(P(state.customers),'',custLabel,'Choose customer')}</select></label>
         <label>Governorate<select name="govId">${opts(govsSorted(),'',null,'Choose governorate')}</select></label>
-        <label>Order date<input type="date" name="date" value="${today()}"></label>
+        <label>Order date <span class="neg">*</span><input type="date" name="date" value="" required></label>
       </div>
       <div id="soCard"></div>
       <label style="max-width:460px">Deduct the whole order from<select name="soAllLoc" data-chg="soAll"><option value="">Choose for each product line</option>${(()=>{const L=projLocs(state,ui.project);return [['w','Warehouses'],['s','Sales team']].map(([k,lb])=>{const x=L.filter(y=>y[2]===k);return x.length?`<optgroup label="${lb}">${x.map(y=>`<option value="${y[0]}">${esc(y[1])}</option>`).join('')}</optgroup>`:''}).join('')})()}</select><span class="small muted" style="font-weight:400">Optional. Sets every line to this location; you can still change a single line.</span></label>
@@ -1609,11 +1610,12 @@ function pgSales(u){
 
 function invData(){
   const f=ui.inv||(ui.inv={product:'',loc:'',type:'',from:'',to:''});
-  const prods=P(state.products).filter(p=>!f.product||p.id===f.product);
+  const qm=prodMatcher(f.q);
+  const prods=P(state.products).filter(p=>(!f.product||p.id===f.product)&&qm(p));const pok=new Set(prods.map(p=>p.id));
   const pids=isAll()?myProjIds():[ui.project];
   const allLocs=[...pids,...(isAll()?[ALL]:[])].flatMap(pid=>projLocs(state,pid,isAll()).map(l=>[l[0],(isAll()?projCode(pid)+' ':'')+(l[2]==='s'?l[1]+' (sales)':l[1]),l[2]==='s'?'Sales team':'Warehouse',pid]));
   const locs=allLocs.filter(l=>!f.loc||l[0]===f.loc);
-  const mv=P(state.movements).filter(m=>(!f.product||m.productId===f.product)&&(!f.loc||m.from===f.loc||m.to===f.loc)&&(!f.type||m.type===f.type)&&(!f.from||m.at.slice(0,10)>=f.from)&&(!f.to||m.at.slice(0,10)<=f.to)).slice().reverse();
+  const mv=P(state.movements).filter(m=>pok.has(m.productId)&&(!f.loc||m.from===f.loc||m.to===f.loc)&&(!f.type||m.type===f.type)&&(!f.from||m.at.slice(0,10)>=f.from)&&(!f.to||m.at.slice(0,10)<=f.to)).slice().reverse();
   return {f,prods,allLocs,locs,mv};
 }
 function pgInventory(u){
@@ -1623,13 +1625,14 @@ function pgInventory(u){
   const locs=isAll()&&!f.product?locsAll:locsAll.filter(l=>!f.product||l[3]===ALL||l[3]===(find(state.products,f.product)||{}).projectId);
   prods.forEach(p=>{const bs=batchesFor(state,p.id);const totals=locs.map(()=>0);
     bs.forEach(b=>{const vals=locs.map(l=>qty(state,l[0],p.id,b.id));vals.forEach((v,i)=>totals[i]+=v);const t=vals.reduce((a,c)=>a+c,0);
-      rows.push([H(`<span class="muted">${esc(p.sku)}</span>`),H(`<span class="code">${esc(b.batchNo)}</span>`),fmtD(b.expiry),...vals.map(v=>({h:`<span class="${v<0?'neg':''}">${v}</span>`})),{h:String(t)}])});
-    const row=[H(`<strong>${esc(p.sku)} ${esc(p.name)}</strong>`),H('<span class="muted">All batches</span>'),'',...totals.map(v=>({h:`<strong>${v}</strong>`})),{h:`<strong>${totals.reduce((a,c)=>a+c,0)}</strong>`}];rows.push(row)});
+      rows.push([H(`<span class="muted">${esc(p.code||'')} ${esc(p.sku)}</span>`),H(`<span class="code">${esc(b.batchNo)}</span>`),fmtD(b.expiry),...vals.map(v=>({h:`<span class="${v<0?'neg':''}">${v}</span>`})),{h:String(t)}])});
+    const row=[H(`<strong><span class="code">${esc(p.code||'')}</span> ${esc(p.name)}</strong> <span class="muted small">${esc(p.sku)}</span>`),H('<span class="muted">All batches</span>'),'',...totals.map(v=>({h:`<strong>${v}</strong>`})),{h:`<strong>${totals.reduce((a,c)=>a+c,0)}</strong>`}];rows.push(row)});
   const types=[...new Set(P(state.movements).map(m=>m.type))].sort();
   const shown=mv.slice(0,200);
   return ph('inventory','Balances update automatically when a task is completed. Every movement carries the order reference.')+`
   <div class="panel">
     <div class="fgrid">
+      <label>Search product<input type="search" data-live="invQ" value="${esc(f.q||'')}" placeholder="Product ID, name or SKU"></label>
       <label>Product<select data-chg="inv" data-k="product"><option value="">All products</option>${PS().map(p=>`<option value="${p.id}" ${f.product===p.id?'selected':''}>${esc(prodLabel(p))}</option>`).join('')}</select></label>
       <label>Location<select data-chg="inv" data-k="loc"><option value="">All locations</option>${allLocs.map(l=>`<option value="${l[0]}" ${f.loc===l[0]?'selected':''}>${esc(l[1])}</option>`).join('')}</select></label>
       <label>Movement type<select data-chg="inv" data-k="type"><option value="">All types</option>${types.map(t=>`<option ${f.type===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>
@@ -1797,6 +1800,42 @@ function mvData(){
 function saleDays(){const m={};(state.sales||[]).forEach(x=>{if(x.direct&&x.date&&x.ref)m[x.ref]=x.date});return m}
 function mvDay(m,sd){return (m.type==='Direct sale'&&sd&&sd[m.ref])||locDay(m.at)}
 function saleDay(x){return (x.direct&&x.date)||locDay(x.at)||x.date}
+function normTxt(v){return String(v||'').toLowerCase().replace(/\s+/g,' ').trim()}
+function prodMatcher(q){const t=normTxt(q);if(!t)return ()=>true;const parts=t.split(' ');return p=>{const h=normTxt([p.code,p.name,p.sku].join(' '));return parts.every(x=>h.includes(x))}}
+/* Every product dropdown gets a search box: type any letters of the name, Product ID or SKU */
+const PROD_SEL='select[name=productId],select[name=product],select[name=item_product],select[name=so_product],select[name=ca_product],select[data-k=product]:not([data-chg=inv])';
+const PSQ={};
+function enhanceProdSelects(root){
+  const seen={};
+  (root||document).querySelectorAll(PROD_SEL).forEach(sel=>{
+    const base=(ui.page||'')+'|'+(sel.dataset.chg||'')+'|'+(sel.dataset.k||sel.name);const key=base+'|'+(seen[base]=(seen[base]||0)+1);
+    if(sel.dataset.ps)return;sel.dataset.ps='1';
+    const box=document.createElement('input');box.type='search';box.className='ps-q';box.placeholder='Type to search product';box.setAttribute('aria-label','Search products');box.autocomplete='off';
+    sel.parentNode.insertBefore(box,sel);
+    const all=[...sel.options].map(o=>({v:o.value,t:o.textContent,d:o.disabled}));
+    const apply=fire=>{
+      const words=normTxt(box.value).split(' ').filter(Boolean);const cur=sel.value;
+      const keep=all.filter(o=>!o.v||!words.length||words.every(w=>normTxt(o.t).includes(w)));
+      sel.innerHTML='';keep.forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.t;op.disabled=o.d;sel.appendChild(op)});
+      const real=keep.filter(o=>o.v&&!o.d);
+      box.classList.toggle('ps-none',!!words.length&&!real.length);
+      if(keep.some(o=>o.v===cur)&&!(fire&&real.length===1&&cur!==real[0].v)){sel.value=cur;return}
+      if(fire&&real.length&&(real.length===1||!keep.some(o=>o.v===cur))){sel.value=real[0].v;sel.dispatchEvent(new Event('change',{bubbles:true}))}
+    };
+    const saved=sel.dataset.chg&&PSQ[key];
+    if(saved&&saved.q){box.value=saved.q;apply(false);if(saved.focus){box.focus();try{box.setSelectionRange(saved.q.length,saved.q.length)}catch(e){}}}
+    box.addEventListener('input',ev=>{ev.stopPropagation();if(sel.dataset.chg)PSQ[key]={q:box.value,focus:true};apply(true)});
+    box.addEventListener('blur',()=>{if(box.isConnected&&PSQ[key])setTimeout(()=>{if(PSQ[key]&&document.activeElement&&document.activeElement.classList.contains('ps-q'))return;if(PSQ[key])PSQ[key].focus=false},0)});
+    box.addEventListener('keydown',ev=>{if(ev.key==='Enter')ev.preventDefault()});
+  });
+}
+let liveT=null;
+document.addEventListener('input',ev=>{const el=ev.target;if(!el||!el.dataset||!el.dataset.live)return;
+  const k=el.dataset.live;clearTimeout(liveT);liveT=setTimeout(()=>{
+    if(k==='invQ'){ui.inv=ui.inv||{};ui.inv.q=el.value}
+    const pos=el.selectionStart;render();const n=document.querySelector('[data-live="'+k+'"]');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(e){}}
+  },200)},true);
+new MutationObserver(()=>enhanceProdSelects()).observe(document.documentElement,{childList:true,subtree:true});
 function ssPeriod(){const t=today();const k=ui.ssP||'today';let from=t,to=t;
   if(k==='yday'){from=to=addDays(t,-1)}else if(k==='month'){from=t.slice(0,8)+'01'}else if(k==='custom'){from=ui.ssFrom||t;to=ui.ssTo||t;if(to<from)[from,to]=[to,from]}
   return {k,from,to}}
@@ -2405,6 +2444,7 @@ const forms={
   })()},
   directOrder(fd,f){
     const e=f.querySelector('.form-err');const show=m=>{e.textContent=m;e.classList.remove('hide');e.scrollIntoView({block:'nearest'})};e.classList.add('hide');
+    if(!fd.get('date'))return show('Enter the order date before saving the order.');
     const isNew=!document.getElementById('soNew').classList.contains('hide');
     let custId=fd.get('customerId');let nc=null;
     if(isNew){const code=String(fd.get('soCode')||'').trim().toUpperCase();const name=String(fd.get('nc_name')||'').trim();
@@ -2683,7 +2723,7 @@ const acts={
   tkReopen(el){act(s=>{const t=find(s.tickets,el.dataset.id);if(!t)throw new Error('This ticket no longer exists.');if(t.createdById!==me().id)throw new Error('Only the person who opened this ticket can reopen it.');
     t.status='Open';t.closedAt=null;t.closedById=null;log(s,'Ticket reopened',t.ref,t.id+': '+t.title,'Open')},'Ticket reopened.')},
   ovP(el){ui.ovP=el.dataset.k;if(el.dataset.k==='custom'){const p=ovPeriod();ui.ovFrom=ui.ovFrom||p.from;ui.ovTo=ui.ovTo||p.to}render()},
-  clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:''};render()},
+  clearInv(){ui.inv={product:'',loc:'',type:'',from:'',to:'',q:''};render()},
   async exportInv(){
     const {pj,f,sheets}=invWorkbook();
     const prodPart=f.product?((find(state.products,f.product)||{}).sku||'product'):'all';
