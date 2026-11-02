@@ -611,6 +611,13 @@ function batchOptions(s,pid,type,sel){
   if(!list.length)return `<option value="">${needStock?'No batch with stock':'No batches, add one on Products'}</option>`;
   return '<option value="">Choose batch</option>'+list.map(b=>`<option value="${esc(b.id)}" ${b.id===sel?'selected':''}>${esc(b.batchNo)}, ${batchAvail(s,b.id)} available${b.expiry?', exp '+esc(fmtD(b.expiry)):''}</option>`).join('');
 }
+/* A trip with no stops left (all orders removed, reassigned or deleted) is removed automatically */
+function pruneRoutes(s,by){
+  if(!s||!s.routes||!s.tasks)return 0;const ids=new Set(s.tasks.map(t=>t.id));let n=0;
+  s.routes=s.routes.filter(rt=>{rt.taskIds=(rt.taskIds||[]).filter(id=>ids.has(id));if(rt.taskIds.length)return true;n++;
+    try{log(s,'Trip removed',null,rt.name+(rt.note?' ('+rt.note+')':'')+', no stops left','Deleted',by||null,rt.projectId===ALL?null:rt.projectId)}catch(e){}return false});
+  return n;
+}
 function migrate(s){
   if(!s)return s;
   if(s.v===1){
@@ -634,6 +641,7 @@ function migrate(s){
   if(!s.hasTicketsPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('tickets'))u.pages.push('tickets')});s.hasTicketsPage=true}
   if(!s.hasMovementsPage){(s.users||[]).forEach(u=>{if(['admin','ops','lead','viewer'].includes(u.role)&&u.pages&&!u.pages.includes('movements')&&u.pages.includes('inventory'))u.pages.push('movements')});s.hasMovementsPage=true}
   if(!s.hasStockSumPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('stocksum')&&(u.role==='viewer'||u.role==='admin'||u.pages.includes('inventory')))u.pages.push('stocksum')});s.hasStockSumPage=true}
+  pruneRoutes(s,'system');
   if(!s.leadMyTasks){(s.users||[]).forEach(u=>{if(u.role==='lead'&&u.pages&&!u.pages.includes('mytasks'))u.pages.push('mytasks')});s.leadMyTasks=true}
   if(!s.hasStockCheckPage){(s.users||[]).forEach(u=>{if((u.role==='admin'||u.role==='lead')&&u.pages&&!u.pages.includes('stockcheck'))u.pages.push('stockcheck')});s.hasStockCheckPage=true}
   if(!s.sharedGroups){const keep={};const remap={};
@@ -741,7 +749,7 @@ async function fbAct(fn,okMsg){
       const h=await tx.get(fbDoc('state','head'));const hd=h.exists?h.data():{rev:0,n:0};
       let base=state;
       if((hd.rev||0)!==(state.rev||0)){let str='';for(let i=0;i<hd.n;i++){const c=await tx.get(fbDoc('state','c'+i));str+=((c.exists&&c.data())||{}).d||''}base=migrate(str?JSON.parse(str):blank())}
-      const st=structuredClone(base);fn(st);st.rev=(hd.rev||0)+1;fbWrite(tx,st,hd.n);out=st;
+      const st=structuredClone(base);fn(st);pruneRoutes(st);st.rev=(hd.rev||0)+1;fbWrite(tx,st,hd.n);out=st;
     });
     state=out;render();
     const m=okMsg||toastMsg;toastMsg='';if(m)toast(m);
@@ -803,7 +811,7 @@ function act(fn,okMsg){
   if(FB&&FB.user)return fbAct(fn,okMsg);
   try{
     const s=structuredClone(state);
-    fn(s);
+    fn(s);pruneRoutes(s);
     s.rev++;state=s;persist();render();
     if(okMsg)toast(okMsg);
   }catch(e){toast(e.message||String(e),'bad');}
