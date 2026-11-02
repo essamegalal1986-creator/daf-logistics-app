@@ -260,6 +260,9 @@ button.ref:hover{filter:brightness(.95)}
 .conf .tbl{max-height:none}
 .conf thead th{position:sticky;top:-22px;z-index:1}
 .conf-actions{position:sticky;bottom:-22px;background:var(--surface);padding:12px 0 4px;margin-top:12px!important;border-top:1px solid var(--line);z-index:2}
+.ss-tbl table{min-width:100%}.ss-tbl th,.ss-tbl td{white-space:nowrap}.ss-tbl td.pn{white-space:normal;min-width:220px}
+.ss-tbl tr.tot td{font-weight:700;background:var(--sunk);border-top:2px solid var(--line)}.ss-tbl td.tc,.ss-tbl th.tc{font-weight:700;background:var(--sunk)}
+.ss-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.ss-ok{color:var(--ok)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .kpi{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;background:var(--surface)}
 .kpi .kl{font-size:13px;font-weight:700;color:var(--muted)}
@@ -392,6 +395,7 @@ const PAGES=[
   ['sales','Sales','8'],
   ['inventory','Inventory','9'],
   ['movements','Product movement',''],
+  ['stocksum','Stock summary',''],
   ['stockcheck','Stock validation',''],
   ['tickets','Tickets',''],
   ['report','Activity report','10'],
@@ -399,10 +403,10 @@ const PAGES=[
 ];
 const ROLE_PAGES={
   admin:PAGES.map(p=>p[0]),
-  ops:['dashboard','requests','sales','inventory','movements','tickets','report'],
-  lead:['dashboard','prepare','routes','mytasks','inventory','movements','stockcheck','tickets','report'],
+  ops:['dashboard','requests','sales','inventory','movements','stocksum','tickets','report'],
+  lead:['dashboard','prepare','routes','mytasks','inventory','movements','stocksum','stockcheck','tickets','report'],
   agent:['mytasks','tickets'],
-  viewer:['dashboard','sales','inventory','movements','tickets','report']
+  viewer:['dashboard','sales','inventory','movements','stocksum','tickets','report']
 };
 const TYPES={
   Delivery:{flow:'out',customer:true,wh:'Ship from',help:'Deducts stock from the selected warehouse or sales team member and records a sale on completion.'},
@@ -576,6 +580,7 @@ function migrate(s){
   if(!s.tickets)s.tickets=[];
   if(!s.hasTicketsPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('tickets'))u.pages.push('tickets')});s.hasTicketsPage=true}
   if(!s.hasMovementsPage){(s.users||[]).forEach(u=>{if(['admin','ops','lead','viewer'].includes(u.role)&&u.pages&&!u.pages.includes('movements')&&u.pages.includes('inventory'))u.pages.push('movements')});s.hasMovementsPage=true}
+  if(!s.hasStockSumPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('stocksum')&&(u.role==='viewer'||u.role==='admin'||u.pages.includes('inventory')))u.pages.push('stocksum')});s.hasStockSumPage=true}
   if(!s.leadMyTasks){(s.users||[]).forEach(u=>{if(u.role==='lead'&&u.pages&&!u.pages.includes('mytasks'))u.pages.push('mytasks')});s.leadMyTasks=true}
   if(!s.hasStockCheckPage){(s.users||[]).forEach(u=>{if((u.role==='admin'||u.role==='lead')&&u.pages&&!u.pages.includes('stockcheck'))u.pages.push('stockcheck')});s.hasStockCheckPage=true}
   if(!s.sharedGroups){const keep={};const remap={};
@@ -903,6 +908,7 @@ const IC={
   tickets:'<path d="M3 7a2 2 0 0 0 0 4v6h18v-6a2 2 0 0 1 0-4V5H3z"/><path d="M9 5v14" stroke-dasharray="2 2"/>',
   inventory:'<path d="M3 21V9l9-6 9 6v12"/><path d="M7 21v-8h10v8M7 17h10"/>',
   movements:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  stocksum:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>',
   stockcheck:'<path d="M4 5v14M7 5v14M10 5v14M14 5v14M17 5v10M20 5v14"/><path d="m15 18 2 2 4-4"/>',
   projects:'<path d="M3 7h18v13H3z"/><path d="M8 7V4h8v3"/>',
   products:'<path d="M21 8 12 3 3 8l9 5zM3 8v8l9 5 9-5V8M12 13v8"/>',
@@ -912,7 +918,7 @@ const IC={
   depot:'<path d="M3 21V9l9-6 9 6v12"/><path d="M8 21v-6h8v6"/>'
 };
 function icon(k){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]||IC.dashboard}</svg>`}
-const NAV_GROUPS=[['Overview',['dashboard']],['Orders',['requests','prepare','sales']],['Delivery',['routes','mytasks','tickets']],['Warehouse',['inventory','movements','stockcheck']],['Master data',['projects','products','setup']],['Administration',['report','users']]];
+const NAV_GROUPS=[['Overview',['dashboard']],['Orders',['requests','prepare','sales']],['Delivery',['routes','mytasks','tickets']],['Warehouse',['inventory','stocksum','movements','stockcheck']],['Master data',['projects','products','setup']],['Administration',['report','users']]];
 function groupOf(id){const g=NAV_GROUPS.find(x=>x[1].includes(id));return g?g[0]:''}
 function initials2(n){return String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 function shell(u,pages,projs){
@@ -954,7 +960,7 @@ function table(cols,rows,emptyMsg){
 const H=h=>({h});
 
 function page(u){
-  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,tickets:pgTickets,movements:pgMovements,report:pgReport,users:pgUsers};
+  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,stocksum:pgStockSum,tickets:pgTickets,movements:pgMovements,report:pgReport,users:pgUsers};
   return map[ui.page](u);
 }
 
@@ -1787,6 +1793,58 @@ function mvData(){
   const sum=Object.values(g).sort((a,b)=>nm(state.products,a.productId).localeCompare(nm(state.products,b.productId))||b.qty-a.qty);
   return {f,rows,sum};
 }
+
+function ssPeriod(){const t=today();const k=ui.ssP||'today';let from=t,to=t;
+  if(k==='yday'){from=to=addDays(t,-1)}else if(k==='month'){from=t.slice(0,8)+'01'}else if(k==='custom'){from=ui.ssFrom||t;to=ui.ssTo||t;if(to<from)[from,to]=[to,from]}
+  return {k,from,to}}
+function ssData(){
+  const {from,to}=ssPeriod();
+  const pids=isAll()?[...myProjIds(),ALL]:[ui.project,ALL];
+  const cols=[];const seen={};
+  const addCol=(key,label)=>{if(!seen[key]){seen[key]=cols.length;cols.push({key,label})}};
+  (isAll()?[...myProjIds(),ALL]:[ui.project]).forEach(pid=>projLocs(state,pid,isAll()).filter(l=>l[2]==='w').forEach(l=>addCol(l[0],(isAll()&&pid!==ALL&&myProjIds().length>1?projCode(pid)+' ':'')+l[1])));
+  const salesKey='S';
+  const prods=state.products.filter(p=>pids.includes(p.projectId)).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base',numeric:true}));
+  const pset=new Set(prods.map(p=>p.id));
+  const B={open:{},sales:{},io:{}};
+  const add=(blk,pid,c,v)=>{const r=B[blk][pid]=B[blk][pid]||{};r[c]=(r[c]||0)+v};
+  const colOf=l=>{if(l.startsWith('S:'))return salesKey;if(!(l in seen))addCol(l,locName(state,l));return l};
+  state.movements.forEach(m=>{
+    if(!pset.has(m.productId))return;const d=locDay(m.at);const isOpen=m.ref==='OPENING'||d<from;
+    if(!isOpen&&d>to)return;const q=Number(m.qty)||0;
+    if(isLoc(m.from)){const c=colOf(m.from);if(isOpen)add('open',m.productId,c,-q);else if(/^C:/.test(m.to||''))add('sales',m.productId,c,q);else add('io',m.productId,c,-q)}
+    if(isLoc(m.to)){const c=colOf(m.to);if(isOpen)add('open',m.productId,c,q);else add('io',m.productId,c,q)}
+  });
+  cols.push({key:salesKey,label:'Sales Team'});
+  const get=(blk,pid,c)=>((B[blk][pid]||{})[c])||0;
+  const rem=(pid,c)=>get('open',pid,c)-get('sales',pid,c)+get('io',pid,c);
+  const any=pid=>cols.some(c=>get('open',pid,c.key)||get('sales',pid,c.key)||get('io',pid,c.key)||rem(pid,c.key));
+  const shown=ui.ssAll?prods:prods.filter(p=>any(p.id));
+  const blocks=[['open','Opening balance',(pid,c)=>get('open',pid,c)],['sales','Sales',(pid,c)=>get('sales',pid,c)],['io','In and Out',(pid,c)=>get('io',pid,c)],['rem','Remaining stock',rem]];
+  /* check against live stock when the period ends today */
+  let match=null;if(to>=today()){match=true;const live={};for(const k in state.stock){const [l,pid]=k.split('|');if(!pset.has(pid)||!isLoc(l))continue;const c=l.startsWith('S:')?salesKey:l;live[pid+'|'+c]=(live[pid+'|'+c]||0)+state.stock[k]}
+    prods.forEach(p=>cols.forEach(c=>{if((live[p.id+'|'+c.key]||0)!==rem(p.id,c.key))match=false}))}
+  return {from,to,cols,prods:shown,hidden:prods.length-shown.length,blocks,match};
+}
+function ssDay(from,to){return from===to?fmtD(from):fmtD(from)+' to '+fmtD(to)}
+function pgStockSum(u){
+  if(!ui.project)return ph('stocksum')+needProject();
+  const d=ssData();const pr=ssPeriod();
+  const opts=[['today','Today'],['yday','Yesterday'],['month','This month'],['custom','Custom']];
+  const n=v=>v<0?`<span class="neg">${v}</span>`:String(v);
+  const blk=([k,title,fn])=>{const tot=d.cols.map(c=>d.prods.reduce((a,p)=>a+fn(p.id,c.key),0));const gt=tot.reduce((a,b)=>a+b,0);
+    const head=k==='open'?`${title} ${esc(fmtD(d.from))}`:k==='rem'?`${title} ${esc(fmtD(d.to))}`:`${title} ${esc(ssDay(d.from,d.to))}`;
+    return `<div class="panel"><div class="ss-h"><h2>${head}</h2></div><div class="tbl ss-tbl"><table><thead><tr><th>Product ID</th><th>Product name</th>${d.cols.map(c=>`<th class="num">${esc(c.label)}</th>`).join('')}<th class="num tc">Total</th></tr></thead><tbody>
+    ${d.prods.map(p=>{const vals=d.cols.map(c=>fn(p.id,c.key));const t=vals.reduce((a,b)=>a+b,0);return `<tr><td><span class="code">${esc(p.code||'')}</span></td><td class="pn">${esc(p.name)}</td>${vals.map(v=>`<td class="num">${n(v)}</td>`).join('')}<td class="num tc">${n(t)}</td></tr>`}).join('')}
+    <tr class="tot"><td></td><td>Total</td>${tot.map(v=>`<td class="num">${n(v)}</td>`).join('')}<td class="num tc">${n(gt)}</td></tr></tbody></table></div></div>`};
+  return ph('stocksum','Opening balance, sales, in and out, and remaining stock for every product, by warehouse and for the sales team together. Remaining = opening − sales + in and out.')+`
+  <div class="panel"><div class="spread"><div><h2>Period</h2><p class="muted small">${esc(ssDay(d.from,d.to))}${d.match===true?' · <span class="ss-ok">Remaining stock matches the live inventory.</span>':d.match===false?' · <span class="neg">Remaining stock does not match the live inventory, check the stock movements.</span>':''}</p></div>
+    <div class="row"><div class="tabs" role="tablist" style="margin:0;border:0">${opts.map(([k,l])=>`<button class="tab ${pr.k===k?'on':''}" role="tab" aria-selected="${pr.k===k}" data-act="ssP" data-k="${k}">${l}</button>`).join('')}</div>
+    ${pr.k==='custom'?`<label style="flex-direction:row;align-items:center;gap:6px">From<input type="date" data-chg="ssD" data-k="ssFrom" value="${d.from}"></label><label style="flex-direction:row;align-items:center;gap:6px">To<input type="date" data-chg="ssD" data-k="ssTo" value="${d.to}"></label>`:''}
+    <button class="btn ghost sm" data-act="ssExport">Export to Excel</button></div></div>
+    <p class="small muted" style="margin-top:8px">Sales = completed deliveries and direct orders. In and Out = received, returned, transferred and back to stock, as one net number per location. Opening stock entries always count in the opening balance. ${d.hidden?`${d.hidden} product${d.hidden===1?'':'s'} with no stock or movement hidden. `:''}<label style="display:inline-flex;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-chg="ssAll" ${ui.ssAll?'checked':''}> Show all products</label></p></div>
+  ${d.prods.length?d.blocks.map(blk).join(''):'<div class="panel"><p class="muted">No products with stock in this project yet.</p></div>'}`;
+}
 function pgMovements(u){
   if(!ui.project)return ph('movements')+needProject();
   const {f,rows,sum}=mvData();
@@ -2588,6 +2646,21 @@ const acts={
   mvView(el){ui.mvView=el.dataset.v;render()},
   mvClear(){ui.mvf=null;render()},
   mvQuick(el){const d=Number(el.dataset.d);ui.mvf=ui.mvf||{};ui.mvf.from=d<0?'':dayStr(-d);ui.mvf.to=d<0?'':today();render()},
+  async ssExport(){
+    const d=ssData();const out=[];
+    out.push(['DAF Logistics App, stock summary']);out.push(['Project',isAll()?'All my projects':projCode(ui.project)+': '+nm(state.projects,ui.project)]);out.push(['Period',ssDay(d.from,d.to)]);out.push(['Exported',fmtT(now())+' by '+cur()]);out.push([]);
+    d.blocks.forEach(([k,title,fn])=>{
+      out.push([k==='open'?title+' '+fmtD(d.from):k==='rem'?title+' '+fmtD(d.to):title+' '+ssDay(d.from,d.to)]);
+      out.push(['Product ID','Product name',...d.cols.map(c=>c.label),'Total']);
+      const tot=d.cols.map(()=>0);
+      d.prods.forEach(p=>{const v=d.cols.map(c=>fn(p.id,c.key));v.forEach((x,i)=>tot[i]+=x);out.push([p.code||'',p.name,...v,v.reduce((a,b)=>a+b,0)])});
+      out.push(['','Total',...tot,tot.reduce((a,b)=>a+b,0)]);out.push([]);
+    });
+    const base='daf-stock-summary-'+d.from+(d.from!==d.to?'-to-'+d.to:'');
+    if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(out);ws['!cols']=[{wch:12},{wch:42},...d.cols.map(c=>({wch:Math.max(10,c.label.length+2)})),{wch:10}];XLSX.utils.book_append_sheet(wb,ws,'Stock summary');await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
+    else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile(base+'.csv','\ufeff'+out.map(r=>r.map(q).join(',')).join('\n'))}
+  },
+  ssP(el){ui.ssP=el.dataset.k;if(el.dataset.k==='custom'){const p=ssPeriod();ui.ssFrom=ui.ssFrom||p.from;ui.ssTo=ui.ssTo||p.to}render()},
   async mvExport(){
     const {f,rows,sum}=mvData();const pr=id=>find(state.products,id)||{};
     const info=[['DAF Logistics App, product movement'],['Project',isAll()?'All my projects':projCode(ui.project)+': '+nm(state.projects,ui.project)],['From date',f.from||'Any'],['To date',f.to||'Any'],['Product',f.product?prodLabel(pr(f.product)):'All products'],['Location',f.loc?locName(state,f.loc)+' ('+({any:'in or out',from:'out',to:'in'})[f.dir]+')':'All locations'],['Type',f.type||'All types'],['Exported',fmtT(now())+' by '+cur()]];
@@ -2720,6 +2793,8 @@ const changes={
     if(!el.value){l.innerHTML='<option value="">Choose batch first</option>';return}
     const def=r.items[0]?itemLoc(r.items[0]):'';l.innerHTML='<option value="">Choose location</option>'+confLocOpts(r,pid,el.value,def);confTotal()},
   ovD(el){ui[el.dataset.k]=el.value;render()},
+  ssD(el){ui[el.dataset.k]=el.value;render()},
+  ssAll(el){ui.ssAll=el.checked;render()},
   inv(el){ui.inv=ui.inv||{};ui.inv[el.dataset.k]=el.value;render()},
   restoreData(el){const file=el.files&&el.files[0];if(!file)return;const rd=new FileReader();
     rd.onload=()=>{let obj=null;try{obj=JSON.parse(rd.result)}catch(e){}el.value='';
