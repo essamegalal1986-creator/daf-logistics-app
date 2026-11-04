@@ -1760,6 +1760,9 @@ function pgSales(u){
   ${table([{l:'Sale'},{l:'Reference'},{l:'Channel'},{l:'Date'},{l:'Customer'},{l:'Agent'},{l:'Lines'},{l:'Total',num:1}],rows,'No sales yet.')}`;
 }
 
+/* Highest quantity first, for every inventory view */
+function byQtyDesc(list,val){const v=new Map(list.map(x=>[x,val(x)]));return list.slice().sort((a,b)=>v.get(b)-v.get(a)||String(a.name||a.batchNo||'').localeCompare(String(b.name||b.batchNo||''),undefined,{sensitivity:'base',numeric:true}))}
+function batchesByQty(pid,locs){return byQtyDesc(batchesFor(state,pid),b=>locs.reduce((a,l)=>a+qty(state,l[0],pid,b.id),0))}
 function invData(){
   const f=ui.inv||(ui.inv={product:'',loc:'',type:'',from:'',to:''});
   const qm=prodMatcher(f.q);
@@ -1767,6 +1770,7 @@ function invData(){
   const pids=isAll()?myProjIds():[ui.project];
   const allLocs=[...pids,...(isAll()?[ALL]:[])].flatMap(pid=>projLocs(state,pid,isAll()).map(l=>[l[0],(isAll()?projCode(pid)+' ':'')+(l[2]==='s'?l[1]+' (sales)':l[1]),l[2]==='s'?'Sales team':'Warehouse',pid]));
   const locs=allLocs.filter(l=>!f.loc||l[0]===f.loc);
+  prods.splice(0,prods.length,...byQtyDesc(prods,p=>batchesFor(state,p.id).reduce((a,b)=>a+locs.reduce((x,l)=>x+qty(state,l[0],p.id,b.id),0),0)));
   const mv=P(state.movements).filter(m=>pok.has(m.productId)&&(!f.loc||m.from===f.loc||m.to===f.loc)&&(!f.type||m.type===f.type)&&(!f.from||m.at.slice(0,10)>=f.from)&&(!f.to||m.at.slice(0,10)<=f.to)).slice().reverse();
   return {f,prods,allLocs,locs,mv};
 }
@@ -1775,7 +1779,7 @@ function pgInventory(u){
   const {f,prods,allLocs,locs:locsAll,mv}=invData();
   const rows=[];
   const locs=isAll()&&!f.product?locsAll:locsAll.filter(l=>!f.product||l[3]===ALL||l[3]===(find(state.products,f.product)||{}).projectId);
-  prods.forEach(p=>{const bs=batchesFor(state,p.id);const totals=locs.map(()=>0);
+  prods.forEach(p=>{const bs=batchesByQty(p.id,locs);const totals=locs.map(()=>0);
     bs.forEach(b=>{const vals=locs.map(l=>qty(state,l[0],p.id,b.id));vals.forEach((v,i)=>totals[i]+=v);const t=vals.reduce((a,c)=>a+c,0);
       rows.push([H(`<span class="muted">${esc(p.code||'')} ${esc(p.sku)}</span>`),H(`<span class="code">${esc(b.batchNo)}</span>`),fmtD(b.expiry),...vals.map(v=>({h:`<span class="${v<0?'neg':''}">${v}</span>`})),{h:String(t)}])});
     const row=[H(`<strong><span class="code">${esc(p.code||'')}</span> ${esc(p.name)}</strong> <span class="muted small">${esc(p.sku)}</span>`),H('<span class="muted">All batches</span>'),'',...totals.map(v=>({h:`<strong>${v}</strong>`})),{h:`<strong>${totals.reduce((a,c)=>a+c,0)}</strong>`}];rows.push(row)});
@@ -1807,7 +1811,7 @@ function invWorkbook(){
   const pj=isAll()?{code:'ALL',name:'All my projects'}:(find(state.projects,ui.project)||{});
   const prodSheet=[['Project','SKU','Product','Unit','Unit price','Batch','Manufactured','Expiry',...locs.map(l=>l[1]),'Total']];
   const stockSheet=[['Project','SKU','Product','Batch','Expiry','Location','Location type','Quantity']];
-  prods.forEach(p=>batchesFor(state,p.id).forEach(b=>{
+  prods.forEach(p=>batchesByQty(p.id,locs).forEach(b=>{
     const vals=locs.map(l=>qty(state,l[0],p.id,b.id));
     prodSheet.push([projCode(p.projectId),p.sku,p.name,p.unit,Number(p.price)||0,b.batchNo,b.mfg||'',b.expiry||'',...vals,vals.reduce((a,c)=>a+c,0)]);
     locs.forEach((l,i)=>{if(vals[i])stockSheet.push([projCode(p.projectId),p.sku,p.name,b.batchNo,b.expiry||'',l[1],l[2],vals[i]])});
@@ -2015,7 +2019,7 @@ function ssData(){
   const get=(blk,pid,c)=>((B[blk][pid]||{})[c])||0;
   const rem=(pid,c)=>get('open',pid,c)-get('sales',pid,c)+get('io',pid,c);
   const any=pid=>cols.some(c=>get('open',pid,c.key)||get('sales',pid,c.key)||get('io',pid,c.key)||rem(pid,c.key));
-  const shown=ui.ssAll?prods:prods.filter(p=>any(p.id));
+  const shown=byQtyDesc(ui.ssAll?prods:prods.filter(p=>any(p.id)),p=>cols.reduce((a,c)=>a+rem(p.id,c.key),0));
   const blocks=[['open','Opening balance',(pid,c)=>get('open',pid,c)],['sales','Sales',(pid,c)=>get('sales',pid,c)],['io','In and Out',(pid,c)=>get('io',pid,c)],['rem','Remaining stock',rem]];
   /* check against live stock when the period ends today */
   let match=null;if(to>=today()){match=true;const live={};for(const k in state.stock){const [l,pid]=k.split('|');if(!pset.has(pid)||!isLoc(l))continue;const c=l.startsWith('S:')?salesKey:l;live[pid+'|'+c]=(live[pid+'|'+c]||0)+state.stock[k]}
@@ -2136,8 +2140,8 @@ function pgStockCheck(u){
   if(sc.view){const c=find(state.counts,sc.view);if(c)return ph('stockcheck','Compare the physical count with the system stock and fix batch mix-ups.')+countDetail(c)}
   let form='';
   if(sc.loc){
-    const prods=P(state.products).filter(p=>!sc.product||p.id===sc.product);
-    const rows=prods.map(p=>{const bs=batchesFor(state,p.id);if(!bs.length)return '';const sys=bs.reduce((a,b)=>a+qty(state,sc.loc,p.id,b.id),0);
+    const prods=byQtyDesc(P(state.products).filter(p=>!sc.product||p.id===sc.product),p=>batchesFor(state,p.id).reduce((a,b)=>a+qty(state,sc.loc,p.id,b.id),0));
+    const rows=prods.map(p=>{const bs=byQtyDesc(batchesFor(state,p.id),b=>qty(state,sc.loc,p.id,b.id));if(!bs.length)return '';const sys=bs.reduce((a,b)=>a+qty(state,sc.loc,p.id,b.id),0);
       return `<tr class="sc-prod"><td colspan="2"><strong>${esc(p.sku)} ${esc(p.name)}</strong></td><td class="num"><strong>${sys}</strong></td><td class="num"><strong data-ptot="${p.id}">–</strong></td><td class="num" data-pvar="${p.id}">–</td><td data-pstate="${p.id}" class="small muted">Not counted</td></tr>`+
       bs.map(b=>{const q=qty(state,sc.loc,p.id,b.id);return `<tr><td class="code" style="padding-left:22px">${esc(b.batchNo)}</td><td>${esc(fmtD(b.expiry))}</td><td class="num">${q}</td><td class="num"><input type="number" min="0" step="1" inputmode="numeric" name="c|${p.id}|${b.id}" data-inp="count" data-p="${p.id}" data-sys="${q}" style="width:100px;text-align:right;padding:5px 8px" aria-label="Physical count for ${esc(p.name)} batch ${esc(b.batchNo)}"></td><td class="num" data-bvar="${p.id}|${b.id}">–</td><td></td></tr>`}).join('')}).join('');
     form=`<form data-form="stockCount" class="stack">
