@@ -693,7 +693,8 @@ function migrate(s){
   if(!s.tickets)s.tickets=[];
   if(!s.hasTicketsPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('tickets'))u.pages.push('tickets')});s.hasTicketsPage=true}
   if(!s.hasMovementsPage){(s.users||[]).forEach(u=>{if(['admin','ops','lead','viewer'].includes(u.role)&&u.pages&&!u.pages.includes('movements')&&u.pages.includes('inventory'))u.pages.push('movements')});s.hasMovementsPage=true}
-  if(!s.hasReturnSales&&s.requests&&s.sales&&s.seq){(s.requests||[]).filter(r=>r.type==='Return'&&r.status==='Completed'&&!s.sales.some(x=>x.ref===r.ref)).forEach(r=>{const t=(s.tasks||[]).find(x=>x.requestId===r.id)||{};returnSale(s,r,t.agentId,locDay(r.completedAt||t.completedAt||r.createdAt)||today())});s.hasReturnSales=true}
+  if(!s.hasReturnSales&&s.requests&&s.sales&&s.seq){(s.requests||[]).filter(r=>r.type==='Return'&&r.status==='Completed'&&!s.sales.some(x=>x.ref===r.ref)).forEach(r=>{const t=(s.tasks||[]).find(x=>x.requestId===r.id)||{};const ca=retConfirmedAt(s,r);const sale=returnSale(s,r,t.agentId,locDay(ca)||today());if(ca)sale.at=ca});s.hasReturnSales=true}
+  if(!s.retDateFix&&s.sales){(s.sales||[]).filter(x=>x.ret).forEach(x=>{const r=(s.requests||[]).find(q=>q.ref===x.ref);if(!r)return;const ca=retConfirmedAt(s,r);if(ca){x.date=locDay(ca);x.at=ca}});s.retDateFix=true}
   if(!s.catList||!s.compList){const u=k=>[...new Set((s.products||[]).map(p=>String(p[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));s.catList=s.catList||u('category');s.compList=s.compList||u('company')}
   if(!s.hasFinancePages){(s.users||[]).forEach(u=>{if(!u.pages)return;if((u.role==='admin'||u.role==='viewer')&&!u.pages.includes('finance'))u.pages.push('finance');if(u.role==='admin'&&!u.pages.includes('cogs'))u.pages.push('cogs')});s.hasFinancePages=true}
   if(!s.hasStockSumPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('stocksum')&&(u.role==='viewer'||u.role==='admin'||u.pages.includes('inventory')))u.pages.push('stocksum')});s.hasStockSumPage=true}
@@ -1873,7 +1874,7 @@ function pgSales(u){
   if(!ui.project)return ph('sales')+needProject();
   const S=P(state.sales).slice().reverse();
   const total=S.reduce((a,x)=>a+x.total,0);const cc=canCost();const sc=x=>saleCost(x);
-  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)+projTag(x.projectId)),H(x.ret?'<span class="ptag ret" style="margin:0">Return</span>':x.direct?'<span class="ptag" style="margin:0">Direct</span>':'<span class="muted small">Delivery</span>'),fmtD(x.date),custLabel(find(state.customers,x.customerId)),x.direct?'':nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${(find(state.products,l.productId)||{}).code?'<span class="code">'+esc(find(state.products,l.productId).code)+'</span> ':''}${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}${l.loc?` <span class="muted small">from ${esc(locName(state,l.loc))}</span>`:''}`).join('<br>')),{h:`<span class="${x.total<0?'neg':''}">${money(x.total)}</span>`},...(cc?(()=>{const c=sc(x);return [{h:c.cogs===null?'<span class="muted small">Needs COGS</span>':money(c.cogs)+(c.partial?' <span class="small" style="color:var(--warn)" title="Some lines have no COGS yet">*</span>':'')},{h:c.cogs===null?'–':`<span class="${c.gp<0?'neg':''}">${money(c.gp)}</span>`}]})():[])]);
+  const rows=S.map(x=>[H(`<span class="code">${esc(x.id)}</span>`),H(refTag(x.ref)+projTag(x.projectId)),H(x.ret?'<span class="ptag ret" style="margin:0">Return</span>'+(canCost()||me().role==='admin'?` <button class="link small" data-act="retPrice" data-id="${esc(x.id)}">Edit prices</button>`:''):x.direct?'<span class="ptag" style="margin:0">Direct</span>':'<span class="muted small">Delivery</span>'),fmtD(x.date),custLabel(find(state.customers,x.customerId)),x.direct?'':nm(state.agents,x.agentId),H(x.lines.map(l=>`${l.qty} × ${(find(state.products,l.productId)||{}).code?'<span class="code">'+esc(find(state.products,l.productId).code)+'</span> ':''}${esc(nm(state.products,l.productId))}${l.batchId?' <span class="code">'+esc(batchNo(state,l.batchId))+'</span>':''} @ ${money(l.price)}${l.loc?` <span class="muted small">from ${esc(locName(state,l.loc))}</span>`:''}`).join('<br>')),{h:`<span class="${x.total<0?'neg':''}">${money(x.total)}</span>`},...(cc?(()=>{const c=sc(x);return [{h:c.cogs===null?'<span class="muted small">Needs COGS</span>':money(c.cogs)+(c.partial?' <span class="small" style="color:var(--warn)" title="Some lines have no COGS yet">*</span>':'')},{h:c.cogs===null?'–':`<span class="${c.gp<0?'neg':''}">${money(c.gp)}</span>`}]})():[])]);
   const form=!canDirect(u)?'':isAll()?`<h2 style="margin-bottom:10px">New direct order</h2>`+allGate('create a direct order'):`<div class="panel"><h2>New direct order</h2>
     <p class="muted small" style="margin:4px 0 12px">For orders handed over directly, without the logistics team. Stock is deducted and the sale is recorded as soon as you save. Direct orders are not counted as requests.</p>
     <form data-form="directOrder" id="soForm" class="stack" novalidate>
@@ -2088,6 +2089,12 @@ function confAddRow(r){const f=(TYPES[r.type]||{}).flow;
     <label>${f==='in'?'Add back to':'Take from'}<select name="ca_loc"><option value="">Choose batch first</option></select></label>
     <label>Quantity<input type="number" min="1" step="1" name="ca_qty" data-inp="confQ" style="width:90px"></label>
     <button type="button" class="btn plain sm" data-act="confRmAdd" style="margin-top:22px">Remove</button></div>`}
+function openRetPrice(id){const x=find(state.sales,id);if(!x)return;
+  document.getElementById('modal').innerHTML=`<div class="modal-bg" data-act="closeModal" data-self="1"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="rpt" style="max-width:720px">
+    <h2 id="rpt">Return prices, ${esc(x.id)}</h2><p class="muted small">${esc(x.ref)} · ${esc(custLabel(find(state.customers,x.customerId)))} · confirmed ${esc(fmtD(x.date))}. The price is the value taken off sales for each returned unit.</p>
+    <form data-form="retPrice" data-id="${esc(x.id)}"><div class="tbl" style="margin:12px 0"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Qty returned</th><th class="num">Price per unit</th></tr></thead><tbody>
+    ${x.lines.map((l,i)=>{const p=find(state.products,l.productId)||{};return `<tr><td><span class="code">${esc(p.code||'')}</span> ${esc(p.name||'?')}</td><td class="code">${esc(batchNo(state,l.batchId)||'')}</td><td class="num">${-l.qty}</td><td class="num"><input type="number" min="0" step="0.01" name="rp_${i}" value="${Number(l.price)||0}" style="width:120px;text-align:right"></td></tr>`}).join('')}
+    </tbody></table></div><p class="err form-err hide" role="alert"></p><div class="row"><button class="btn" type="submit">Save prices</button><button type="button" class="btn plain" data-act="closeModal">Cancel</button></div></form></div></div>`}
 function openConfirm(taskId,adjust){
   const t=find(state.tasks,taskId);if(!t)return;const r=find(state.requests,t.requestId);if(!r)return;
   if(!r.items.length){act(s=>{const tt=find(s.tasks,taskId),rr=find(s.requests,tt.requestId);if(!['Routed','In transit'].includes(tt.status))throw new Error('This stop is already closed.');completeTask(s,tt,rr)},'Stop completed.');return}
@@ -2256,7 +2263,7 @@ function finPeriod(){const t=today();const k=ui.fnP||'month';let from=t,to=t;
 function saleLoc(x,l){if(l.loc)return l.loc;const r=state.requests.find(q=>q.ref===x.ref);if(!r)return '';const it=r.items.find(i=>i.productId===l.productId&&i.batchId===l.batchId)||r.items.find(i=>i.productId===l.productId);return it?itemLoc(it):''}
 function finLines(from,to){const out=[];P(state.sales).forEach(x=>{const d=saleDay(x);if(d<from||d>to)return;(x.lines||[]).forEach(l=>{const p=find(state.products,l.productId)||{};if(!pfMatch(p))return;const lc=lineCost(x,l);const q=Number(l.qty)||0;const rev=lineRev(l);
   out.push({x,l,p,d,q,rev,uc:lc.uc,cogs:lc.cogs})})});return out}
-function finSum(L){const t={rev:0,revC:0,cogs:0,q:0,miss:0,missRev:0,retRev:0,retN:new Set(),sales:new Set()};L.forEach(z=>{t.rev+=z.rev;t.q+=z.q;if(z.x.ret){t.retRev+=z.rev;t.retN.add(z.x.id)}else t.sales.add(z.x.id);if(z.cogs===null){t.miss++;t.missRev+=z.rev}else{t.revC+=z.rev;t.cogs+=z.cogs}});t.gp=t.revC-t.cogs;t.gpm=t.revC?100*t.gp/t.revC:null;t.n=t.sales.size;return t}
+function finSum(L){const t={rev:0,revC:0,cogs:0,q:0,miss:0,missRev:0,retRev:0,retN:new Set(),sales:new Set()};L.forEach(z=>{t.rev+=z.rev;t.q+=z.q;if(z.x.ret){t.retRev+=z.rev;t.retN.add(z.x.id)}else t.sales.add(z.x.id);if(z.cogs===null){t.miss++;t.missRev+=z.rev}else{t.revC+=z.rev;t.cogs+=z.cogs}});t.gp=t.revC-t.cogs;t.gpm=t.revC?100*t.gp/t.revC:null;t.n=t.sales.size;t.retNoPrice=new Set(L.filter(z=>z.x.ret&&!(Number(z.l.price)>0)).map(z=>z.x.id)).size;return t}
 const FIN_DIMS=[['product','Product'],['source','Purchased by'],['category','Category'],['company','Company'],['customer','Customer'],['channel','Channel'],['location','Sold from'],['project','Project']];
 function finKey(z,dim){const p=z.p;switch(dim){
   case 'product':return [p.id||z.l.productId,((p.code?p.code+' ':'')+(p.name||nm(state.products,z.l.productId)))];
@@ -2314,6 +2321,7 @@ function pgFinance(u){
       ${tile('GP margin',pct(a.gpm),'Gross profit ÷ revenue',a.gpm!==null&&b.gpm!==null?ovDelta(a.gpm,b.gpm,'pts',true):'',a.gpm!==null&&a.gpm<10)}
       ${tile('Waiting for COGS',money(a.missRev),`Revenue not in gross profit yet. ${pend.length} receipt line${pend.length===1?' needs':'s need'} a cost.`,'',a.missRev>0||pend.length>0)}
     </div>
+    ${a.retNoPrice?`<p class="small" style="margin-top:10px;color:var(--bad)"><strong>${a.retNoPrice} return${a.retNoPrice===1?' has':'s have'} no price.</strong> ${a.retNoPrice===1?'Its':'Their'} cost is taken off COGS but nothing is taken off revenue, so gross profit looks higher than it is. Set the prices with <strong>Edit prices</strong> on the return in Sales.</p>`:''}
     ${a.missRev||pend.length?`<p class="small" style="margin-top:10px;color:var(--warn)">Gross profit counts only sales whose batch has a cost. ${allowedPages(u).includes('cogs')?'<button class="link small" data-act="nav" data-page="cogs">Enter the missing COGS</button>':'Ask a user with COGS access to enter the missing costs.'}</p>`:''}
   </div>
   ${invValuePanel()}
@@ -3022,6 +3030,9 @@ const forms={
   lsRename(fd,f){const kind=f.dataset.kind,old=f.dataset.old;const v=String(fd.get('name')||'').trim().replace(/\s+/g,' ');act(s=>{if(!v)throw new Error('Enter a name.');const k=kind==='cat'?'catList':'compList',pk=kind==='cat'?'category':'company';
     if(v!==old&&s[k].some(x=>x.toLowerCase()===v.toLowerCase()&&x!==old))throw new Error('"'+v+'" is already in the list.');const i=s[k].indexOf(old);if(i<0)throw new Error('Not found.');s[k][i]=v;s[k].sort((a,b)=>a.localeCompare(b));
     let n=0;s.products.forEach(p=>{if(String(p[pk]||'').trim()===old){p[pk]=v;n++}});ui.lsEdit='';log(s,(kind==='cat'?'Category':'Company')+' renamed',null,old+' to '+v+(n?', '+n+' product(s) updated':''),'')},'Renamed.')},
+  retPrice(fd,f){act(s=>{const x=find(s.sales,f.dataset.id);if(!x||!x.ret)throw new Error('Return not found.');const ch=[];
+    x.lines.forEach((l,i)=>{const v=fd.get('rp_'+i);if(v===null)return;const n=Number(v);if(!(n>=0))throw new Error('Enter a valid price.');if(n!==Number(l.price)){ch.push(nm(s.products,l.productId)+': '+money(l.price)+' to '+money(n));l.price=n;l.amount=l.qty*n}});
+    if(!ch.length)throw new Error('No price changed.');x.total=x.lines.reduce((a,l)=>a+l.amount,0);log(s,'Return prices changed',x.ref,x.id+'. '+ch.join('; '),'',null,x.projectId);closeModal()},'Return prices saved.')},
   cogsSave(fd,f){act(s=>{let n=0;const det=[];
     for(const [k,v] of fd.entries()){if(!k.startsWith('mc_'))continue;const m=s.movements.find(x=>x.id===k.slice(3));if(!m||!isCostLayer(m))continue;
       const nv=String(v).trim()===''?null:Number(v);if(nv!==null&&!(nv>=0))throw new Error('Enter a valid cost for '+nm(s.products,m.productId)+', batch '+batchNo(s,m.batchId)+'.');
@@ -3138,6 +3149,7 @@ function returnSale(s,r,agentId,date){
   const sale={id:'SAL-'+pad(++s.seq.sale,4),ref:r.ref,ret:true,projectId:r.projectId,customerId:r.customerId,agentId:agentId||'',date:date||today(),at:now(),lines,total:lines.reduce((a,l)=>a+l.amount,0),recordedBy:cur()};
   s.sales.push(sale);return sale;
 }
+function retConfirmedAt(s,r){const m=(s.movements||[]).filter(m=>m.ref===r.ref&&/^C:/.test(m.from||'')&&isLoc(m.to)).sort((a,b)=>String(a.at).localeCompare(String(b.at)))[0];const t=(s.tasks||[]).find(x=>x.requestId===r.id)||{};return (m&&m.at)||r.completedAt||t.completedAt||r.closedAt||t.closedAt||r.createdAt||null}
 function saleCh(x){return x.ret?'Return':x.direct?'Direct order':'Delivery'}
 function completeTask(s,t,r){
   const T=TYPES[r.type];
@@ -3305,6 +3317,7 @@ const acts={
   lsGo(){ui.page='setup';ui.setupTab='catcomp';render();window.scrollTo(0,0)},
   lsDel(el){const kind=el.dataset.kind,v=el.dataset.v;act(s=>{const k=kind==='cat'?'catList':'compList',pk=kind==='cat'?'category':'company';const n=s.products.filter(p=>String(p[pk]||'').trim()===v).length;if(n)throw new Error('"'+v+'" is used by '+n+' product(s). Change them first.');s[k]=s[k].filter(x=>x!==v);log(s,(kind==='cat'?'Category':'Company')+' deleted',null,v,'')},'Deleted.')},
   fnP(el){ui.fnP=el.dataset.k;if(el.dataset.k==='custom'){const p=finPeriod();ui.fnFrom=ui.fnFrom||p.from;ui.fnTo=ui.fnTo||p.to}render()},
+  retPrice(el){openRetPrice(el.dataset.id)},
   fnDim(el){ui.fnDim=el.dataset.k;render()},
   cogsTab(el){ui.cogsTab=el.dataset.k;render()},
   cogsUseProduct(){act(s=>{const pids=finPids();let n=0;s.movements.forEach(m=>{if(!isCostLayer(m)||!(m.cost===null||m.cost===undefined||m.cost===''))return;const pr=find(s.products,m.productId);if(!pr||!pids.includes(pr.projectId)||cogsAfter(pr)||!(Number(pr.cogs)>0))return;m.cost=Number(pr.cogs);m.costBy=cur()+' (product COGS)';m.costAt=now();n++});
