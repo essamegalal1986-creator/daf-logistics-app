@@ -413,7 +413,8 @@ tr.cg-need td{background:var(--warn-soft)}
 .bhint{min-height:18px;font-weight:400}
 .bhint.okh{color:var(--ok)}
 .bhint.bad{color:var(--bad)}
-#lines .line{grid-template-columns:120px minmax(0,1.5fr) minmax(0,1.2fr) 90px 110px auto}
+#lines .line{grid-template-columns:120px minmax(0,1.5fr) minmax(0,1.2fr) 90px 120px auto}
+.lp-money .lp-cost{display:none}input.ro{background:var(--sunk);color:var(--muted)}#reqForm.is-received .lp-money .lp-cost{display:flex}#reqForm.is-received .lp-money .lp-price{display:none}
 @media (max-width:640px){.line,#lines .line{grid-template-columns:1fr 1fr}}
 .hide{display:none!important}
 
@@ -714,10 +715,12 @@ function locName(s,l){
   if(k==='X')return id;
   return l;
 }
+/* COGS timing: 'before' = the product's Unit COGS is applied when stock is received; 'after' = every receipt goes to COGS required */
+function cogsAfter(p){return !!p&&(p.cogsTiming==='after'||(!p.cogsTiming&&!(Number(p.cogs)>0)))}
 function move(s,m,by){
   if(isLoc(m.from))adj(s,m.from,m.productId,m.batchId,-m.qty);
   if(isLoc(m.to))adj(s,m.to,m.productId,m.batchId,m.qty);
-  if(isCostLayer(m)&&m.cost===undefined){const pr=find(s.products,m.productId);m.cost=pr&&Number(pr.cogs)>0?Number(pr.cogs):null;if(m.cost!==null){m.costBy='Product COGS';m.costAt=now()}}
+  if(isCostLayer(m)&&m.cost===undefined){const pr=find(s.products,m.productId);m.cost=pr&&!cogsAfter(pr)&&Number(pr.cogs)>0?Number(pr.cogs):null;if(m.cost!==null){m.costBy='Product COGS';m.costAt=now()}}
   s.movements.push({id:'MOV-'+pad(++s.seq.mov,5),at:now(),by:by||cur(),...m});
 }
 function log(s,action,ref,detail,status,by,projectId){
@@ -1466,8 +1469,8 @@ function lsPanel(){
 function pgProducts(u){
   const projs=myProjects(u);
   const canEdit=u.pages.includes('products');
-  const rows=state.products.filter(p=>(p.projectId===ALL||projs.some(x=>x.id===p.projectId))&&pfMatch(p)).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(p=>{const row=[H(`<span class="code">${esc(p.code||'')}</span>`),H(`<span class="code">${esc(p.sku)}</span>`),p.name,srcLabel(p),p.category||'',p.company||'',p.unit,{h:money(p.price)},...(canCost()?[{h:Number(p.cogs)>0?money(p.cogs):'<span class="muted small">After receiving</span>'}]:[]),p.projectId===ALL?'All projects':nm(state.projects,p.projectId),H(canEdit?`<button class="btn plain sm" data-act="expand" data-id="${p.id}">Edit</button>`:'')];
-    if(ui.expand===p.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="${canCost()?11:10}"><form data-form="productEdit" data-id="${p.id}" class="fgrid"><label>Product ID<input name="code" required value="${esc(p.code||'')}"></label><label>SKU<input name="sku" required value="${esc(p.sku)}"></label><label>Product name<input name="name" required value="${esc(p.name)}"></label><label>Unit<input name="unit" required value="${esc(p.unit||'')}"></label><label>Selling price (per unit)<input name="price" type="number" min="0" step="0.01" value="${Number(p.price)||0}"></label><label>Purchased by<select name="source"><option value="" ${!p.source?'selected':''}>Not set</option><option value="own" ${p.source==='own'?'selected':''}>Our company</option><option value="third" ${p.source==='third'?'selected':''}>Third party</option></select></label><label>Category<select name="category">${lsOpts('cat',p.category)}</select></label><label>Company<select name="company">${lsOpts('comp',p.company)}</select></label>${canCost()?`<label>Unit COGS (cost)<input name="cogs" type="number" min="0" step="0.01" value="${Number(p.cogs)>0?Number(p.cogs):''}" placeholder="Empty = enter after receiving"><span class="small muted" style="font-weight:400">Applies to stock received from now on. Past receipts keep their cost.</span></label>`:''}${(()=>{const bs=state.batches.filter(b=>b.productId===p.id);return bs.length?`<div style="grid-column:1/-1"><p class="small" style="font-weight:700;margin-bottom:6px">Batches: manufactured and expiry dates</p><div class="tbl"><table><thead><tr><th>Batch</th><th>Manufactured</th><th>Expiry</th></tr></thead><tbody>${bs.map(b=>`<tr><td class="code">${esc(b.batchNo)}</td><td><input type="date" name="bm_${b.id}" value="${esc(b.mfg||'')}" style="max-width:170px"></td><td><input type="date" name="be_${b.id}" value="${esc(b.expiry||'')}" style="max-width:170px"></td></tr>`).join('')}</tbody></table></div></div>`:''})()}<div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+  const rows=state.products.filter(p=>(p.projectId===ALL||projs.some(x=>x.id===p.projectId))&&pfMatch(p)).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(p=>{const row=[H(`<span class="code">${esc(p.code||'')}</span>`),H(`<span class="code">${esc(p.sku)}</span>`),p.name,srcLabel(p),p.category||'',p.company||'',p.unit,{h:money(p.price)},...(canCost()?[{h:cogsAfter(p)?'<span class="muted small">After receiving</span>':money(p.cogs)}]:[]),p.projectId===ALL?'All projects':nm(state.projects,p.projectId),H(canEdit?`<button class="btn plain sm" data-act="expand" data-id="${p.id}">Edit</button>`:'')];
+    if(ui.expand===p.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="${canCost()?11:10}"><form data-form="productEdit" data-id="${p.id}" class="fgrid"><label>Product ID<input name="code" required value="${esc(p.code||'')}"></label><label>SKU<input name="sku" required value="${esc(p.sku)}"></label><label>Product name<input name="name" required value="${esc(p.name)}"></label><label>Unit<input name="unit" required value="${esc(p.unit||'')}"></label><label>Selling price (per unit)<input name="price" type="number" min="0" step="0.01" value="${Number(p.price)||0}"></label><label>Purchased by<select name="source"><option value="" ${!p.source?'selected':''}>Not set</option><option value="own" ${p.source==='own'?'selected':''}>Our company</option><option value="third" ${p.source==='third'?'selected':''}>Third party</option></select></label><label>Category<select name="category">${lsOpts('cat',p.category)}</select></label><label>Company<select name="company">${lsOpts('comp',p.company)}</select></label>${canCost()?`<label>COGS timing<select name="cogsTiming" data-chg="cogsTiming"><option value="before" ${!cogsAfter(p)?'selected':''}>Known before receiving</option><option value="after" ${cogsAfter(p)?'selected':''}>Entered after receiving</option></select></label><label class="cogs-val ${cogsAfter(p)?'hide':''}">Unit COGS (cost)<input name="cogs" type="number" min="0" step="0.01" value="${Number(p.cogs)>0?Number(p.cogs):''}" ${cogsAfter(p)?'disabled':''}><span class="small muted" style="font-weight:400">Applies to stock received from now on. Past receipts keep their cost.</span></label>`:''}${(()=>{const bs=state.batches.filter(b=>b.productId===p.id);return bs.length?`<div style="grid-column:1/-1"><p class="small" style="font-weight:700;margin-bottom:6px">Batches: manufactured and expiry dates</p><div class="tbl"><table><thead><tr><th>Batch</th><th>Manufactured</th><th>Expiry</th></tr></thead><tbody>${bs.map(b=>`<tr><td class="code">${esc(b.batchNo)}</td><td><input type="date" name="bm_${b.id}" value="${esc(b.mfg||'')}" style="max-width:170px"></td><td><input type="date" name="be_${b.id}" value="${esc(b.expiry||'')}" style="max-width:170px"></td></tr>`).join('')}</tbody></table></div></div>`:''})()}<div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('products','Create each product and link it to its project.')+`
   ${importPanel()}
@@ -1483,7 +1486,7 @@ function pgProducts(u){
     <label>Category<select name="category">${lsOpts('cat','')}</select></label>
     <label>Company<select name="company">${lsOpts('comp','')}</select></label>
     <p class="small muted" style="grid-column:1/-1;margin:-4px 0 0">Missing a category or company? ${allowedPages(me()).includes('setup')?'<button type="button" class="link small" data-act="lsGo">Add it in Setup data</button>':'Ask an administrator to add it in Setup data.'}</p>
-    ${canCost()?`<label>Unit COGS (cost)<input name="cogs" type="number" min="0" step="0.01" placeholder="Leave empty to enter after receiving"><span class="small muted" style="font-weight:400">If filled, every stock received gets this cost. If empty, received stock goes to COGS required.</span></label>`:''}
+    ${canCost()?`<label>COGS timing<select name="cogsTiming" data-chg="cogsTiming"><option value="before">Known before receiving</option><option value="after">Entered after receiving</option></select><span class="small muted" style="font-weight:400">After receiving: every receipt of this product goes to COGS required.</span></label><label class="cogs-val">Unit COGS (cost)<input name="cogs" type="number" min="0" step="0.01" placeholder="Cost per unit"><span class="small muted" style="font-weight:400">Filled in on every receipt; can be changed per receipt.</span></label>`:''}
     <fieldset style="grid-column:1/-1"><legend>Batches for this product (at least one)</legend>
       <div id="pbLines" class="stack">${pbLine(true)}</div>
       <button type="button" class="btn ghost sm" data-act="addPbLine" style="margin-top:10px">Add another batch</button>
@@ -1590,7 +1593,7 @@ function productLine(prods,first){
   return `<div class="line"><label>Product ID<input name="item_pcode" data-inp="pcode" list="pcodes" placeholder="Type ID" autocomplete="off" spellcheck="false"><span class="phint small muted" aria-live="polite"></span></label><label>Product<select name="item_product" data-chg="lineProduct">${opts(prods,'',prodLabel,'Choose product')}</select></label>
     <label>Batch<input name="item_batch" class="bfind" data-inp="batchFind" placeholder="Choose product first" disabled autocomplete="off" spellcheck="false"><datalist></datalist><span class="bhint small muted" aria-live="polite"></span></label>
     <label>Quantity<input name="item_qty" type="number" min="1" step="1"></label>
-    <label>Selling price<input name="item_price" type="number" min="0" step="0.01" placeholder="Optional" title="Price per unit for this delivery. Leave empty to use the product's selling price."></label>
+    <div class="lp-money"><label class="lp-price">Selling price<input name="item_price" type="number" min="0" step="0.01" placeholder="Optional" title="Price per unit for this delivery. Leave empty to use the product's selling price."></label>${canCost()?`<label class="lp-cost">Unit COGS<input name="item_cost" type="number" min="0" step="0.01" placeholder="Enter later" data-inp="costEdit" title="Cost per unit of this receipt. Filled from the product's COGS; change it if this receipt has a different cost. Leave empty to enter it later in COGS required."></label>`:''}</div>
     <button type="button" class="btn plain sm" data-act="rmLine" aria-label="Remove line" style="margin-bottom:4px">Remove</button></div>`;
 }
 
@@ -2337,7 +2340,7 @@ function pgCogs(u){
   const isP=m=>m.cost===null||m.cost===undefined||m.cost==='';
   const pend=all.filter(isP);const list=(tab==='need'?pend:all).slice().sort((x,y)=>(isP(y)-isP(x))||String(y.at).localeCompare(String(x.at)));
   const shown=list.slice(0,300);
-  const withStd=pend.filter(m=>Number((find(state.products,m.productId)||{}).cogs)>0);
+  const withStd=pend.filter(m=>{const pr=find(state.products,m.productId);return pr&&!cogsAfter(pr)&&Number(pr.cogs)>0});
   const src=m=>m.type==='Opening stock'?'Opening stock':String(m.from||'').replace(/^X:/,'')||'Supplier';
   const rows=shown.map(m=>{const pr=find(state.products,m.productId)||{};const c=isP(m)?'':Number(m.cost);
     return `<tr class="${isP(m)?'cg-need':''}"><td>${esc(fmtD(locDay(m.at)))}</td><td>${m.ref&&m.ref!=='OPENING'?refTag(m.ref):'<span class="muted small">Opening</span>'}</td><td>${esc(src(m))}</td>
@@ -2757,6 +2760,7 @@ const forms={
       bl.push({batchNo:no,mfg:mf[i]||'',expiry:ex[i]||''})});
     if(!bl.length)throw new Error('Add at least one batch number for the product.');
     const p={id:rid('prd'),projectId:pid,code,sku,name:String(fd.get('name')).trim(),unit:String(fd.get('unit')).trim(),price:Number(fd.get('price'))||0,source:String(fd.get('source')||''),category:String(fd.get('category')||'').trim(),company:String(fd.get('company')||'').trim(),cogs:fd.has('cogs')&&fd.get('cogs')!==''?Number(fd.get('cogs')):null};
+    if(fd.has('cogsTiming')){p.cogsTiming=fd.get('cogsTiming')==='after'?'after':'before';if(p.cogsTiming==='after')p.cogs=null;else if(p.cogs===null)throw new Error('Enter the unit COGS, or set COGS timing to Entered after receiving.')}
     if(p.cogs!==null&&!(p.cogs>=0))throw new Error('Unit COGS must be a number.');
     if(p.category&&!(s.catList||[]).includes(p.category))throw new Error('Choose a category from the list.');if(p.company&&!(s.compList||[]).includes(p.company))throw new Error('Choose a company from the list.');
     s.products.push(p);if(!isAll())ui.project=pid;
@@ -2802,7 +2806,9 @@ const forms={
     if(s.products.some(x=>x.id!==p.id&&(x.projectId===p.projectId||x.projectId===ALL||p.projectId===ALL)&&(x.code||'').toUpperCase()===code))throw new Error('Product ID '+code+' already exists in this project.');
     if(s.products.some(x=>x.id!==p.id&&x.projectId===p.projectId&&x.sku===sku))throw new Error('SKU '+sku+' already exists in this project.');
     Object.assign(p,{code,sku,name:String(fd.get('name')).trim(),unit:String(fd.get('unit')).trim(),price:Number(fd.get('price'))||0,source:String(fd.get('source')||''),category:String(fd.get('category')||'').trim(),company:String(fd.get('company')||'').trim()});
-    if(fd.has('cogs')){const v=fd.get('cogs');const nv=v===''?null:Number(v);if(nv!==null&&!(nv>=0))throw new Error('Unit COGS must be a number.');if(nv!==(Number(p.cogs)>0?Number(p.cogs):null)){log(s,'Product COGS changed',null,p.name+': '+(Number(p.cogs)>0?money(p.cogs):'none')+' to '+(nv===null?'none (enter after receiving)':money(nv)),'',null,p.projectId===ALL?null:p.projectId)}p.cogs=nv}
+    if(fd.has('cogsTiming')){const tm=fd.get('cogsTiming')==='after'?'after':'before';if(tm!==(cogsAfter(p)?'after':'before'))log(s,'Product COGS timing changed',null,p.name+': '+(tm==='after'?'entered after receiving':'known before receiving'),'',null,p.projectId===ALL?null:p.projectId);p.cogsTiming=tm;
+      if(tm==='after'){p.cogs=null}else if(!fd.has('cogs')||fd.get('cogs')==='')throw new Error('Enter the unit COGS, or set COGS timing to Entered after receiving.')}
+    if(fd.has('cogs')&&p.cogsTiming!=='after'){const v=fd.get('cogs');const nv=v===''?null:Number(v);if(nv!==null&&!(nv>=0))throw new Error('Unit COGS must be a number.');if(nv!==(Number(p.cogs)>0?Number(p.cogs):null)){log(s,'Product COGS changed',null,p.name+': '+(Number(p.cogs)>0?money(p.cogs):'none')+' to '+(nv===null?'none (enter after receiving)':money(nv)),'',null,p.projectId===ALL?null:p.projectId)}p.cogs=nv}
     let nb=0;s.batches.filter(b=>b.productId===p.id).forEach(b=>{if(!fd.has('be_'+b.id))return;const m=fd.get('bm_'+b.id)||'',e=fd.get('be_'+b.id)||'';if(m&&e&&e<m)throw new Error('Batch '+b.batchNo+': expiry must be after the manufacturing date.');if(m!==(b.mfg||'')||e!==(b.expiry||'')){b.mfg=m;b.expiry=e;nb++}});
     if(nb)log(s,'Batch dates updated',null,p.name+': '+nb+' batch(es)','',null,p.projectId===ALL?null:p.projectId);
     ui.expand=null;log(s,'Product updated',null,code+' '+sku+' '+p.name,'',null,p.projectId===ALL?null:p.projectId)},'Product saved.')},
@@ -2842,8 +2848,8 @@ const forms={
     act(s=>{
     if(nc){if(s.customers.some(x=>(x.projectId===ALL||x.projectId===nc.projectId)&&(x.code||'').toUpperCase()===nc.code))throw new Error('Customer ID '+nc.code+' already exists.');s.customers.push(nc);log(s,'Customer added',null,nc.code+' '+nc.name+', from a request','',null,nc.projectId)}
     const type=fd.get('type'),T=TYPES[type];
-    const ps=fd.getAll('item_product'),qs=fd.getAll('item_qty'),prs=fd.getAll('item_price');const bs=[...document.querySelectorAll('#lines .line')].map(l=>{const pid=l.querySelector('select[name=item_product]').value,txt=l.querySelector('input[name=item_batch]').value;if(!pid||!txt.trim())return '';const b=findBatch(s,pid,txt);if(!b)throw new Error('Batch '+txt.trim()+' was not found for '+nm(s.products,pid)+'. Pick one from the list.');if(!allowedBatches(s,pid,type).some(x=>x.id===b.id))throw new Error('Batch '+b.batchNo+' has no stock available.');return b.id});const items=[];
-    ps.forEach((p,i)=>{const q=Math.floor(Number(qs[i]));if(!p&&!qs[i])return;if(!p)throw new Error('Choose a product on every line with a quantity.');if(!bs[i])throw new Error('Choose a batch for '+nm(s.products,p)+'.');if(!(q>0))throw new Error('Enter a quantity above zero for '+nm(s.products,p)+'.');const pv=String(prs[i]??'').trim();if(pv!==''&&!(Number(pv)>=0))throw new Error('Enter a valid selling price for '+nm(s.products,p)+'.');const it={productId:p,batchId:bs[i],qty:q,warehouseId:''};if(pv!=='')it.price=Number(pv);items.push(it)});
+    const ps=fd.getAll('item_product'),qs=fd.getAll('item_qty'),prs=fd.getAll('item_price'),cos=fd.getAll('item_cost');const bs=[...document.querySelectorAll('#lines .line')].map(l=>{const pid=l.querySelector('select[name=item_product]').value,txt=l.querySelector('input[name=item_batch]').value;if(!pid||!txt.trim())return '';const b=findBatch(s,pid,txt);if(!b)throw new Error('Batch '+txt.trim()+' was not found for '+nm(s.products,pid)+'. Pick one from the list.');if(!allowedBatches(s,pid,type).some(x=>x.id===b.id))throw new Error('Batch '+b.batchNo+' has no stock available.');return b.id});const items=[];
+    ps.forEach((p,i)=>{const q=Math.floor(Number(qs[i]));if(!p&&!qs[i])return;if(!p)throw new Error('Choose a product on every line with a quantity.');if(!bs[i])throw new Error('Choose a batch for '+nm(s.products,p)+'.');if(!(q>0))throw new Error('Enter a quantity above zero for '+nm(s.products,p)+'.');const pv=String(prs[i]??'').trim();if(pv!==''&&!(Number(pv)>=0))throw new Error('Enter a valid selling price for '+nm(s.products,p)+'.');const it={productId:p,batchId:bs[i],qty:q,warehouseId:''};if(pv!=='')it.price=Number(pv);if(type==='Received'&&cos.length&&!cogsAfter(find(s.products,p))){const cv=String(cos[i]??'').trim();if(cv!==''){if(!(Number(cv)>=0))throw new Error('Enter a valid unit COGS for '+nm(s.products,p)+'.');it.cost=Number(cv)}}items.push(it)});
     if(false){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
     if(!items.length&&type!=='Documentation')throw new Error('Add at least one product and quantity.');
     const old=editId?find(s.requests,editId):null;
@@ -3141,7 +3147,7 @@ function completeTask(s,t,r){
     const W=itemLoc(it);const base={ref:r.ref,type:r.type,projectId:r.projectId,productId:it.productId,batchId:it.batchId,qty:it.qty};
     if(T.flow==='out')move(s,{...base,from:W,to:'C:'+r.customerId});
     else if(T.flow==='move')move(s,{...base,from:W,to:r.dest});
-    else if(T.flow==='in')move(s,{...base,from:r.type==='Received'?'X:'+(r.supplier||'Supplier'):'C:'+r.customerId,to:W});
+    else if(T.flow==='in')move(s,{...base,...(r.type==='Received'&&it.cost!==undefined&&it.cost!==null&&it.cost!==''&&!cogsAfter(find(s.products,it.productId))?{cost:Number(it.cost),costBy:(r.createdBy||cur()||'')+' (on receipt)',costAt:now()}:{}),from:r.type==='Received'?'X:'+(r.supplier||'Supplier'):'C:'+r.customerId,to:W});
     else return;
     const m=s.movements[s.movements.length-1];mv.push(m.qty+' × '+nm(s.products,m.productId)+' batch '+batchNo(s,m.batchId)+' '+locName(s,m.from)+' to '+locName(s,m.to));
   });
@@ -3177,8 +3183,8 @@ const acts={
     else await saveFile('daf-sale-products-template.csv','\ufeff'+rows.map(r=>r.join(',')).join('\n'));
   },
   async reqImpTemplate(){
-    const rows=[['Product ID','Quantity','Batch (optional)','Selling price (optional)'],['P0001',10,'',185],['P0002',5,'','']];
-    if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:10},{wch:18},{wch:24}];XLSX.utils.book_append_sheet(wb,ws,'Products');await saveFile('daf-request-products-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
+    const rows=[['Product ID','Quantity','Batch (optional)','Selling price (optional)','Unit COGS (optional, Received only)'],['P0001',10,'',185,''],['P0002',5,'','',120]];
+    if(window.XLSX){const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:10},{wch:18},{wch:24},{wch:32}];XLSX.utils.book_append_sheet(wb,ws,'Products');await saveFile('daf-request-products-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
     else await saveFile('daf-request-products-template.csv','\ufeff'+rows.map(r=>r.join(',')).join('\n'));
   },
   addLine(){const tpl=document.getElementById('lineTpl');document.getElementById('lines').appendChild(tpl.content.cloneNode(true))},
@@ -3267,8 +3273,8 @@ const acts={
       imp.rows.forEach(r=>{
         if(r.status==='error'||r.status==='dup')return;
         let p=s.products.find(x=>(x.projectId===pid||x.projectId===ALL)&&(x.code||'').toUpperCase()===r.code)||made[r.code];
-        if(!p){if(s.products.some(x=>x.projectId===pid&&x.sku===r.sku))return;p={id:rid('prd'),projectId:pid,code:r.code,sku:r.sku,name:r.name,unit:r.unit,price:r.price||0,source:r.source||'',category:r.category||'',company:r.company||'',cogs:canCost()&&r.cogs!==null?r.cogs:null};s.products.push(p);made[r.code]=p;np++}
-        else if(upd&&!made[r.code]&&!p._u){p.name=r.name;p.unit=r.unit;p.price=r.price||0;if(r.source)p.source=r.source;if(r.category)p.category=r.category;if(r.company)p.company=r.company;if(canCost()&&r.cogs!==null)p.cogs=r.cogs;p._u=1;nu++}
+        if(!p){if(s.products.some(x=>x.projectId===pid&&x.sku===r.sku))return;p={id:rid('prd'),projectId:pid,code:r.code,sku:r.sku,name:r.name,unit:r.unit,price:r.price||0,source:r.source||'',category:r.category||'',company:r.company||'',cogs:canCost()&&r.cogs!==null?r.cogs:null};p.cogsTiming=p.cogs!==null?'before':'after';s.products.push(p);made[r.code]=p;np++}
+        else if(upd&&!made[r.code]&&!p._u){p.name=r.name;p.unit=r.unit;p.price=r.price||0;if(r.source)p.source=r.source;if(r.category)p.category=r.category;if(r.company)p.company=r.company;if(canCost()&&r.cogs!==null){p.cogs=r.cogs;p.cogsTiming='before'}p._u=1;nu++}
         if(!s.batches.some(b=>b.productId===p.id&&b.batchNo===r.batchNo)){s.batches.push({id:rid('bt'),projectId:p.projectId,productId:p.id,batchNo:r.batchNo,mfg:r.mfg||'',expiry:r.expiry||'',createdAt:now(),createdBy:cur()});nb++}
       });
       s.products.forEach(p=>{delete p._u});
@@ -3301,7 +3307,7 @@ const acts={
   fnP(el){ui.fnP=el.dataset.k;if(el.dataset.k==='custom'){const p=finPeriod();ui.fnFrom=ui.fnFrom||p.from;ui.fnTo=ui.fnTo||p.to}render()},
   fnDim(el){ui.fnDim=el.dataset.k;render()},
   cogsTab(el){ui.cogsTab=el.dataset.k;render()},
-  cogsUseProduct(){act(s=>{const pids=finPids();let n=0;s.movements.forEach(m=>{if(!isCostLayer(m)||!(m.cost===null||m.cost===undefined||m.cost===''))return;const pr=find(s.products,m.productId);if(!pr||!pids.includes(pr.projectId)||!(Number(pr.cogs)>0))return;m.cost=Number(pr.cogs);m.costBy=cur()+' (product COGS)';m.costAt=now();n++});
+  cogsUseProduct(){act(s=>{const pids=finPids();let n=0;s.movements.forEach(m=>{if(!isCostLayer(m)||!(m.cost===null||m.cost===undefined||m.cost===''))return;const pr=find(s.products,m.productId);if(!pr||!pids.includes(pr.projectId)||cogsAfter(pr)||!(Number(pr.cogs)>0))return;m.cost=Number(pr.cogs);m.costBy=cur()+' (product COGS)';m.costAt=now();n++});
     if(!n)throw new Error('No lines to fill.');log(s,'COGS entered',null,n+' receipt line(s) set to the product COGS','',null,isAll()?null:ui.project)},'Product COGS applied.')},
   async finExport(){
     const pr=finPeriod();const L=finLines(pr.from,pr.to);const a=finSum(L);const iv=invValue();
@@ -3378,13 +3384,13 @@ const changes={
     f.querySelectorAll('.w-customer').forEach(x=>x.classList.toggle('hide',!T.customer));
     if(!T.customer)reqNewToggle(false);
     f.querySelector('.w-transfer').classList.toggle('hide',el.value!=='Transfer');
-    f.querySelector('.w-received').classList.toggle('hide',el.value!=='Received');
+    f.querySelector('.w-received').classList.toggle('hide',el.value!=='Received');f.classList.toggle('is-received',el.value==='Received');
     f.querySelector('.w-doc').classList.toggle('hide',el.value!=='Documentation');
     document.getElementById('typeHelp').textContent=T.help;
     f.querySelectorAll('#lines .line').forEach(l=>setupBatchField(l,el.value));
   },
   reqFilter(el){ui.reqFilter=el.value;render()},
-  lineProduct(el){{const ln=el.closest('.line');const pi=ln&&ln.querySelector('input[name=item_price]');const pp=find(state.products,el.value);if(pi)pi.placeholder=pp?money(pp.price):'Optional'}const line=el.closest('.line');if(line){const pc=line.querySelector('input[name=item_pcode]');if(pc){const p=find(state.products,el.value);pc.value=p?(p.code||''):'';const h=line.querySelector('.phint');h.className='phint small muted';h.textContent=p?p.sku+', '+p.name:''}const inp=line.querySelector('input[name=item_batch]');inp.value='';setupBatchField(line,el.form.elements.type.value);if(!inp.disabled)inp.focus();return}const b=el.form.querySelector('select[name=batch]');if(b)b.innerHTML=batchOptions(state,el.value,'Received');const oc=el.form.querySelector('input[name=op_code]');if(oc&&!el.dataset.fromCode){const p=find(state.products,el.value);oc.value=p?(p.code||''):'';const h=el.form.querySelector('.ophint');h.className='ophint small muted';h.style.color='';h.textContent=p?p.sku+', '+p.name:''}},
+  lineProduct(el){{const ln=el.closest('.line');const pi=ln&&ln.querySelector('input[name=item_price]');const pp=find(state.products,el.value);if(pi)pi.placeholder=pp?money(pp.price):'Optional';const ci=ln&&ln.querySelector('input[name=item_cost]');if(ci){const aft=pp&&cogsAfter(pp);ci.readOnly=!!aft;ci.classList.toggle('ro',!!aft);ci.placeholder=aft?'After receiving':'Enter later';ci.title=aft?'This product\'s COGS is entered after receiving, in COGS required.':ci.title;if(aft){ci.value='';ci.dataset.auto=''}else if(ci.value===''||ci.dataset.auto==='1'){const c=pp&&Number(pp.cogs)>0?Number(pp.cogs):'';ci.value=c;ci.dataset.auto=c===''?'':'1'}}}const line=el.closest('.line');if(line){const pc=line.querySelector('input[name=item_pcode]');if(pc){const p=find(state.products,el.value);pc.value=p?(p.code||''):'';const h=line.querySelector('.phint');h.className='phint small muted';h.textContent=p?p.sku+', '+p.name:''}const inp=line.querySelector('input[name=item_batch]');inp.value='';setupBatchField(line,el.form.elements.type.value);if(!inp.disabled)inp.focus();return}const b=el.form.querySelector('select[name=batch]');if(b)b.innerHTML=batchOptions(state,el.value,'Received');const oc=el.form.querySelector('input[name=op_code]');if(oc&&!el.dataset.fromCode){const p=find(state.products,el.value);oc.value=p?(p.code||''):'';const h=el.form.querySelector('.ophint');h.className='ophint small muted';h.style.color='';h.textContent=p?p.sku+', '+p.name:''}},
   routeAgent(el){filterRouteTasks()},
   routeGroup(el){filterRouteTasks()},
   routeGov(el){filterRouteTasks()},
@@ -3437,7 +3443,7 @@ const changes={
     const rd=new FileReader();rd.onload=()=>{el.value='';let rows;
       try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}catch(e){msg.innerHTML=`<p class="err">Could not read this file: ${esc(e.message||e)}</p>`;return}
       const hdr=(rows[0]||[]).map(h=>String(h||'').trim().toLowerCase());
-      const ci=hdr.findIndex(h=>['product id','productid','id','product code','code','item id'].includes(h)),qi=hdr.findIndex(h=>['quantity','qty','qnty','amount'].includes(h)),bi=hdr.findIndex(h=>h.startsWith('batch')||h==='lot'),pri=hdr.findIndex(h=>h.includes('price'));
+      const ci=hdr.findIndex(h=>['product id','productid','id','product code','code','item id'].includes(h)),qi=hdr.findIndex(h=>['quantity','qty','qnty','amount'].includes(h)),bi=hdr.findIndex(h=>h.startsWith('batch')||h==='lot'),pri=hdr.findIndex(h=>h.includes('price')),coi=hdr.findIndex(h=>h.includes('cogs')||h==='cost'||h==='unit cost');
       if(ci<0||qi<0){msg.innerHTML=`<p class="err">The file needs a <strong>Product ID</strong> column and a <strong>Quantity</strong> column. Download the template to see the format.</p>`;return}
       const type=f.elements.type.value;const added=[],bad=[];
       rows.slice(1).forEach((r,i)=>{if(!r||r.every(c=>String(c??'').trim()===''))return;const code=String(r[ci]??'').trim();const q=Math.floor(Number(String(r[qi]??'').replace(/,/g,'')));
@@ -3450,6 +3456,7 @@ const changes={
         if(want){const b=findBatch(state,p.id,want);if(b){bt.value=b.batchNo;batchHint(line,type)}else bad.push(`Line ${i+2}: batch "${esc(want)}" not found for ${esc(code)}, choose it from the list`)}
         line.querySelector('input[name=item_qty]').value=q;
         if(pri>=0){const pv=String(r[pri]??'').replace(/,/g,'').trim();if(pv!==''){if(Number(pv)>=0)line.querySelector('input[name=item_price]').value=Number(pv);else bad.push(`Line ${i+2}: selling price for ${esc(code)} is not a number, the product price will be used`)}}
+        if(coi>=0){const cin=line.querySelector('input[name=item_cost]');const cv=String(r[coi]??'').replace(/,/g,'').trim();if(cin&&cin.readOnly&&cv!=='')bad.push(`Line ${i+2}: ${esc(code)} has its COGS entered after receiving, so the cost in the file was not used`);else if(cin&&cv!==''){if(Number(cv)>=0){cin.value=Number(cv);cin.dataset.auto=''}else bad.push(`Line ${i+2}: unit COGS for ${esc(code)} is not a number, the product COGS will be used`)}}
         added.push(code)});
       const need=[...document.querySelectorAll('#lines .line')].filter(l=>l.querySelector('select[name=item_product]').value&&!l.querySelector('input[name=item_batch]').value.trim()).length;
       msg.innerHTML=`<div class="note" style="margin-top:4px">${added.length?`<strong>${added.length} product line${added.length===1?'':'s'} added from ${esc(file.name)}.</strong> `:'<strong>No lines added.</strong> '}${need?`Choose the <strong>batch</strong> on ${need} line${need===1?'':'s'} (lines with only one batch were filled in for you).`:added.length?'All batches are filled in.':''}${bad.length?`<div class="err" style="margin-top:6px">${bad.join('<br>')}</div>`:''}</div>`;
@@ -3470,6 +3477,7 @@ const changes={
   rmAgent(el){ui.rmAgent=el.value;render()},
   fnD(el){const p=finPeriod();ui.fnFrom=p.from;ui.fnTo=p.to;ui[el.dataset.k]=el.value;render()},
   fnSort(el){ui.fnSort=el.value;render()},
+  cogsTiming(el){const f=el.form;const box=f.querySelector('.cogs-val');if(!box)return;const aft=el.value==='after';box.classList.toggle('hide',aft);const i=box.querySelector('input');i.disabled=aft;if(aft)i.value=''},
   slD(el){ui[el.dataset.k]=el.value;render()},
   pf(el){pfGet()[el.dataset.k]=el.value;render()},
   ssD(el){const p=ssPeriod();ui.ssFrom=p.from;ui.ssTo=p.to;ui[el.dataset.k]=el.value;ui.ssP='custom';render()},
@@ -3517,7 +3525,7 @@ function fillReqEdit(){
   f.elements.reqDate.value=r.reqDate||'';f.elements.notes.value=r.notes||'';
   r.items.forEach((it,i)=>{let lines=document.querySelectorAll('#lines .line');if(i>=lines.length){document.getElementById('lines').appendChild(document.getElementById('lineTpl').content.cloneNode(true));lines=document.querySelectorAll('#lines .line')}
     const line=lines[i];const sel=line.querySelector('select[name=item_product]');sel.value=it.productId;changes.lineProduct(sel);
-    const bt=line.querySelector('input[name=item_batch]');bt.value=batchNo(state,it.batchId);batchHint(line,r.type);line.querySelector('input[name=item_qty]').value=it.qty;const pi=line.querySelector('input[name=item_price]');if(pi)pi.value=it.price!==undefined&&it.price!==null?it.price:''});
+    const bt=line.querySelector('input[name=item_batch]');bt.value=batchNo(state,it.batchId);batchHint(line,r.type);line.querySelector('input[name=item_qty]').value=it.qty;const pi=line.querySelector('input[name=item_price]');if(pi)pi.value=it.price!==undefined&&it.price!==null?it.price:'';const ci=line.querySelector('input[name=item_cost]');if(ci){ci.value=it.cost!==undefined&&it.cost!==null?it.cost:'';ci.dataset.auto=''}});
 }
 function reqNewToggle(on){const n=document.getElementById('reqNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('reqForm');if(on){f.elements.customerId.value='';document.getElementById('custCard').innerHTML='';(f.elements.custCode.value.trim()?f.elements.rnc_name:f.elements.custCode).focus()}}
 function soNewToggle(on){const n=document.getElementById('soNew');if(!n)return;n.classList.toggle('hide',!on);const f=document.getElementById('soForm');if(on){f.elements.customerId.value='';document.getElementById('soCard').innerHTML='';(f.elements.soCode.value.trim()?f.elements.nc_name:f.elements.soCode).focus()}}
@@ -3545,7 +3553,7 @@ document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.datase
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.lineProduct(sel);delete sel.dataset.fromCode;
     h.className='ophint small';if(p){h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}else{h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='pcode'){const line=el.closest('.line');const sel=line.querySelector('select[name=item_product]');const h=line.querySelector('.phint');const p=prodByCode(el.value);
     if(p){if(sel.value!==p.id){sel.value=p.id;const keep=el.value;changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}
-    else{const keep=el.value;if(sel.value){sel.value='';changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color=keep.trim()?'var(--bad)':'';h.textContent=keep.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='cogsCalc'){const td=el.closest('tr')&&el.closest('tr').querySelector('.cg-tot');if(td)td.textContent=el.value===''?'–':money((Number(el.value)||0)*Number(el.dataset.q));return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
+    else{const keep=el.value;if(sel.value){sel.value='';changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color=keep.trim()?'var(--bad)':'';h.textContent=keep.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='costEdit'){el.dataset.auto='';return}if(el.dataset&&el.dataset.inp==='cogsCalc'){const td=el.closest('tr')&&el.closest('tr').querySelector('.cg-tot');if(td)td.textContent=el.value===''?'–':money((Number(el.value)||0)*Number(el.dataset.q));return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
   if(el.dataset&&el.dataset.inp==='soCust')return;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(!el)return;const h=changes[el.dataset.chg];if(h)h(el)});
 document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending&&!ui.dirty){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
