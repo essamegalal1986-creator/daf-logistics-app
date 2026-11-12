@@ -362,7 +362,9 @@ tr.cg-need td{background:var(--warn-soft)}
 .xb-l{font-size:13px;font-weight:700;color:var(--muted)}.xbox b{font-size:24px;font-family:var(--head,inherit);line-height:1.15}.xbox b small{font-size:13px;font-weight:600;color:var(--muted)}
 .xb-v{font-weight:700;font-size:14px}.xb-s{font-size:12px;color:var(--muted)}
 .ptag.ret{background:var(--bad-soft);color:var(--bad);border-color:transparent}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.kpi,.stat,.rsum-i,.xbox{min-width:0;overflow:hidden}
+.kpi>b,.stat>b,.rsum-i>b,.xbox>b{display:block;white-space:nowrap;overflow:hidden;max-width:100%}
 .kpi{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;background:var(--surface)}
 .kpi .kl{font-size:13px;font-weight:700;color:var(--muted)}
 .kpi b{font-family:var(--cond);font-size:30px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
@@ -530,6 +532,7 @@ const rid=p=>p+'_'+Math.random().toString(36).slice(2,9);
 const fmtT=iso=>{if(!iso)return '';const d=new Date(iso);return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})};
 const fmtD=s=>{if(!s)return '';const d=new Date(s+'T00:00:00');return isNaN(d)?s:d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})};
 const money=n=>Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const num=n=>Number(n||0).toLocaleString('en-US',{maximumFractionDigits:2});
 const slug=s=>String(s||'').toLowerCase().replace(/\s+/g,'-');
 const st=s=>s?`<span class="st st-${slug(s)}">${esc(s)}</span>`:'';
 
@@ -921,6 +924,11 @@ function linkLogin(s,userId,agentName){
 function myAgentIds(u){return state.agents.filter(a=>a.userId===u.id).map(a=>a.id)}
 
 /* ---------- Render ---------- */
+/* Shrink a box's big number until it fits its box */
+const FIT_SEL='.kpi>b,.stat>b,.rsum-i>b,.xbox>b';
+function fitNums(root){(root||document).querySelectorAll(FIT_SEL).forEach(el=>{el.style.fontSize='';if(!el.clientWidth)return;let fs=parseFloat(getComputedStyle(el).fontSize)||24;let n=0;while(el.scrollWidth>el.clientWidth+1&&fs>13&&n<40){fs-=1;el.style.fontSize=fs+'px';n++}})}
+try{document.fonts&&document.fonts.ready.then(()=>fitNums())}catch(e){}
+let fitT=null;window.addEventListener('resize',()=>{clearTimeout(fitT);fitT=setTimeout(()=>fitNums(),120)});
 function render(){
   ui.dirty=false;ui.pending=false;
   const root=document.getElementById('app');
@@ -937,6 +945,7 @@ function render(){
   root.innerHTML=shell(u,pages,projs);
   if(ui.page==='requests'&&ui.editReq)fillReqEdit();
   if(ui.page==='sales')soTotal();
+  fitNums(root);
 }
 
 function loginPanel(){
@@ -2226,10 +2235,10 @@ function invValuePanel(){
   const can=allowedPages(me()).includes('cogs');
   return `<div class="panel"><div class="spread" style="margin-bottom:10px"><div><h2>Inventory value at COGS</h2><p class="muted small">Stock on hand right now, valued at the price each unit was received at (first in, first out).</p></div></div>
     <div class="kpis">
-      <div class="kpi"><span class="kl">Inventory value</span><b>${money(iv.value)}</b><span class="ks">${iv.units-iv.unc} of ${iv.units} units have a cost</span></div>
-      <div class="kpi"><span class="kl">Units without COGS</span><b class="${iv.unc?'neg':''}">${iv.unc}</b><span class="ks">${iv.unc?'Not included in the value yet':'Every unit has a cost'}</span></div>
-      <div class="kpi"><span class="kl">Receipts needing COGS</span><b class="${pend.length?'neg':''}">${pend.length}</b><span class="ks">${pend.length?`${pend.reduce((a,m)=>a+Number(m.qty),0)} units received without a cost`:'Nothing waiting'}</span>${pend.length&&can?'<button class="link small" data-act="nav" data-page="cogs" style="align-self:flex-start;margin-top:4px">Enter COGS</button>':''}</div>
-      ${locs.map(([k,r])=>`<div class="kpi"><span class="kl">${esc(k==='S'?'Sales team':locName(state,k))}</span><b>${money(r.v)}</b><span class="ks">${r.u} units${r.unc?`, ${r.unc} without cost`:''}</span></div>`).join('')}
+      <div class="kpi"><span class="kl">Inventory value</span><b>${money(iv.value)}</b><span class="ks">${num(iv.units-iv.unc)} of ${num(iv.units)} units have a cost</span></div>
+      <div class="kpi"><span class="kl">Units without COGS</span><b class="${iv.unc?'neg':''}">${num(iv.unc)}</b><span class="ks">${iv.unc?'Not included in the value yet':'Every unit has a cost'}</span></div>
+      <div class="kpi"><span class="kl">Receipts needing COGS</span><b class="${pend.length?'neg':''}">${num(pend.length)}</b><span class="ks">${pend.length?`${num(pend.reduce((a,m)=>a+Number(m.qty),0))} units received without a cost`:'Nothing waiting'}</span>${pend.length&&can?'<button class="link small" data-act="nav" data-page="cogs" style="align-self:flex-start;margin-top:4px">Enter COGS</button>':''}</div>
+      ${locs.map(([k,r])=>`<div class="kpi"><span class="kl">${esc(k==='S'?'Sales team':locName(state,k))}</span><b>${money(r.v)}</b><span class="ks">${num(r.u)} units${r.unc?`, ${num(r.unc)} without cost`:''}</span></div>`).join('')}
     </div></div>`;
 }
 function finPeriod(){const t=today();const k=ui.fnP||'month';let from=t,to=t;
@@ -2287,7 +2296,7 @@ function pgFinance(u){
   const bar=v=>a.rev?`<span class="sharebar"><i style="width:${Math.max(1,Math.round(100*v/a.rev))}%"></i></span>`:'';
   const rows=G.map(g=>[g.label,String(g.q),{h:money(g.rev)},{h:g.cogs||g.revC?money(g.cogs):'<span class="muted small">–</span>'},{h:g.revC?`<span class="${g.gp<0?'neg':''}">${money(g.gp)}</span>`:'–'},{h:g.gpm===null?'<span class="muted small">Needs COGS</span>':`<span class="${g.gpm<10?'neg':''}">${pct(g.gpm)}</span>`},H(`<span class="row" style="gap:6px;flex-wrap:nowrap">${bar(g.rev)}<span class="small muted">${a.rev?Math.round(100*g.rev/a.rev):0}%</span></span>`)]);
   if(G.length)rows.push([H('<strong>Total</strong>'),{h:`<strong>${a.q}</strong>`},{h:`<strong>${money(a.rev)}</strong>`},{h:`<strong>${money(a.cogs)}</strong>`},{h:`<strong>${money(a.gp)}</strong>`},{h:`<strong>${pct(a.gpm)}</strong>`},'']);
-  const invTbl=(obj,lab)=>{const e=Object.entries(obj).sort((x,y)=>y[1].v-x[1].v);return table([{l:lab},{l:'Units',num:1},{l:'Value at COGS',num:1},{l:'Without cost',num:1}],e.map(([k,r])=>[k==='S'?'Sales team':/^[WS]:/.test(k)?locName(state,k):k,String(r.u),{h:money(r.v)},{h:r.unc?`<span class="neg">${r.unc}</span>`:'0'}]),'No stock.')};
+  const invTbl=(obj,lab)=>{const e=Object.entries(obj).sort((x,y)=>y[1].v-x[1].v);return table([{l:lab},{l:'Units',num:1},{l:'Value at COGS',num:1},{l:'Without cost',num:1}],e.map(([k,r])=>[k==='S'?'Sales team':/^[WS]:/.test(k)?locName(state,k):k,num(r.u),{h:money(r.v)},{h:r.unc?`<span class="neg">${num(r.unc)}</span>`:'0'}]),'No stock.')};
   return ph('finance','Revenue, cost of goods sold and gross profit from deliveries and direct orders. COGS is exact: each unit sold carries the price it was received at, oldest stock first.')+`
   <div class="panel ov">
     <div class="spread" style="margin-bottom:12px"><div><h2>Profit</h2><p class="muted small">${esc(fmtD(pr.from))}${pr.from!==pr.to?' to '+esc(fmtD(pr.to)):''}, compared with ${esc(fmtD(pr.pFrom))}${pr.pFrom!==pr.pTo?' to '+esc(fmtD(pr.pTo)):''}</p></div>
@@ -2296,7 +2305,7 @@ function pgFinance(u){
       <button class="btn ghost sm" data-act="finExport">Export to Excel</button></div></div>
     <div class="fgrid" style="margin-bottom:12px">${pfBar()}</div>
     <div class="kpis">
-      ${tile('Revenue',money(a.rev),`${a.n} sale${a.n===1?'':'s'}, ${a.q} units${a.retN.size?`, after ${a.retN.size} return${a.retN.size===1?'':'s'} of ${money(-a.retRev)}`:''}`,d(a.rev,b.rev,'pct',true))}
+      ${tile('Revenue',money(a.rev),`${num(a.n)} sale${a.n===1?'':'s'}, ${num(a.q)} units${a.retN.size?`, after ${a.retN.size} return${a.retN.size===1?'':'s'} of ${money(-a.retRev)}`:''}`,d(a.rev,b.rev,'pct',true))}
       ${tile('COGS',money(a.cogs),a.miss?`${a.miss} line${a.miss===1?' still needs':'s still need'} a cost`:'Every line has a cost',d(a.cogs,b.cogs,'pct',false))}
       ${tile('Gross profit',money(a.gp),'Revenue − COGS, for lines with a cost',d(a.gp,b.gp,'pct',true),a.gp<0)}
       ${tile('GP margin',pct(a.gpm),'Gross profit ÷ revenue',a.gpm!==null&&b.gpm!==null?ovDelta(a.gpm,b.gpm,'pts',true):'',a.gpm!==null&&a.gpm<10)}
@@ -2337,7 +2346,7 @@ function pgCogs(u){
       <td class="num"><input type="number" min="0" step="0.01" name="mc_${esc(m.id)}" value="${c}" data-inp="cogsCalc" data-q="${m.qty}" placeholder="${Number(pr.cogs)>0?'Product: '+Number(pr.cogs):'Enter cost'}" style="width:120px;text-align:right;padding:5px 8px" aria-label="Unit COGS for ${esc(pr.name||'')} batch ${esc(batchNo(state,m.batchId)||'')}"></td>
       <td class="num cg-tot">${c===''?'–':money(c*m.qty)}</td><td class="small muted">${isP(m)?'<span class="neg" style="font-weight:700">Needs COGS</span>':esc(m.costBy||'')}</td></tr>`}).join('');
   return ph('cogs','Stock received without a cost is counted in stock straight away and listed here. Enter the unit cost once you have it; sales of that batch, gross profit and inventory value update immediately.')+`
-  <div class="stats"><div class="stat"><b class="${pend.length?'neg':''}">${pend.length}</b><span>Receipt lines needing COGS</span></div><div class="stat"><b>${pend.reduce((a,m)=>a+Number(m.qty),0)}</b><span>Units received without cost</span></div><div class="stat"><b>${new Set(pend.map(m=>m.productId)).size}</b><span>Products affected</span></div><div class="stat"><b>${money(finSum(finLines('0000-01-01','9999-12-31')).missRev)}</b><span>Sales value waiting for COGS</span></div></div>
+  <div class="stats"><div class="stat"><b class="${pend.length?'neg':''}">${num(pend.length)}</b><span>Receipt lines needing COGS</span></div><div class="stat"><b>${num(pend.reduce((a,m)=>a+Number(m.qty),0))}</b><span>Units received without cost</span></div><div class="stat"><b>${new Set(pend.map(m=>m.productId)).size}</b><span>Products affected</span></div><div class="stat"><b>${money(finSum(finLines('0000-01-01','9999-12-31')).missRev)}</b><span>Sales value waiting for COGS</span></div></div>
   <div class="panel">
     <div class="spread" style="margin-bottom:10px"><div class="tabs" role="tablist" style="margin:0;border:0"><button class="tab ${tab==='need'?'on':''}" role="tab" aria-selected="${tab==='need'}" data-act="cogsTab" data-k="need">Needs COGS (${pend.length})</button><button class="tab ${tab==='all'?'on':''}" role="tab" aria-selected="${tab==='all'}" data-act="cogsTab" data-k="all">All receipts (${all.length})</button></div>
       <div class="row"><label style="flex-direction:row;align-items:center;gap:6px">Search<input type="search" data-live="cogsQ" value="${esc(ui.cogsQ||'')}" placeholder="Product ID, name or SKU"></label>
