@@ -1008,6 +1008,7 @@ function navCount(page,u){
   if(!ui.project)return 0;
   if(page==='prepare')return P(state.requests).filter(r=>r.status==='New'||r.status==='Failed').length;
   if(page==='routes')return P(state.tasks).filter(t=>t.status==='Awaiting route').length;
+  if(page==='cogs')return cogsPending().length;
   if(page==='mytasks'){const ids=myAgentIds(u);return P(state.tasks).filter(t=>ids.includes(t.agentId)&&(t.status==='Routed'||t.status==='In transit')).length}
   return 0;
 }
