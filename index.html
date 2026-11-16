@@ -146,6 +146,7 @@ p{margin:0}
 .panel > h2{margin-bottom:12px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .spread{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.spread>*,.row>*{min-width:0;max-width:100%}.row>.tabs,.spread>.tabs{overflow-x:auto}
 .stack{display:flex;flex-direction:column;gap:12px}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
 label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:500}
@@ -316,7 +317,7 @@ button.ref:hover{filter:brightness(.95)}
 .dw-hist li{display:flex;flex-direction:column;padding:4px 0 10px 12px;position:relative}.dw-hist li::before{content:"";position:absolute;left:-6px;top:9px;width:10px;height:10px;border-radius:50%;background:var(--route)}
 @media (max-width:640px){.sc{width:100%}.sc.endc{width:50%}.kvs{grid-template-columns:1fr}.trip-r{margin-left:0;width:100%}}
 @media (prefers-color-scheme:dark){.sc-note{background:#3a3214;border-color:#5c4d17;color:#f3e2a2}.sc.s-failed .sc-card{background:var(--surface)}}
-.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}.cols2>.panel{margin-bottom:16px}
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:16px}.cols2>*{min-width:0}.cols2>.panel{margin-bottom:16px}
 @media (max-width:520px){.cols2{grid-template-columns:1fr}}
 .trend-w{overflow-x:auto}.trend{width:100%;min-width:560px;max-width:1100px;height:auto;display:block}
 .trend .tg{stroke:var(--line);stroke-width:1}.trend .tl{font-size:11px;fill:var(--muted)}
@@ -1129,12 +1130,14 @@ function typeIc(type){return `<span class="tyic ty-${slug(type)}" title="${esc(t
 function hm(iso){if(!iso)return '';return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
 function durTxt(ms){const m=Math.max(0,Math.round(ms/6e4));const h=Math.floor(m/60);return h?h+'h '+(m%60)+'m':m+'m'}
 function closedAt(t){return t.status==='Completed'?t.completedAt:t.status==='Failed'?t.failedAt:null}
+/* A trip's day on the route map = the earliest requested date of its orders (the trip date only if none has one) */
+function tripDay(rt){const ds=(rt.taskIds||[]).map(id=>{const t=find(state.tasks,id);const r=t&&find(state.requests,t.requestId);return r&&r.reqDate}).filter(Boolean).sort();return ds[0]||rt.date}
 function tripInfo(rt){
   const t0=today();
   const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).filter(t=>ownTrip(rt)||visTask(t)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
   const isClosed=x=>['Completed','Failed'].includes(x.t.status);
-  stops.forEach(x=>{x.closed=isClosed(x);x.late=!x.closed&&((x.r.reqDate&&x.r.reqDate<t0)||(rt.date<t0));
-    x.lateDays=x.late?Math.max(1,daysBetween(x.r.reqDate&&x.r.reqDate<t0?x.r.reqDate:rt.date,t0)):0;
+  stops.forEach(x=>{x.closed=isClosed(x);const due=x.r.reqDate||rt.date;x.late=!x.closed&&due<t0;
+    x.lateDays=x.late?Math.max(1,daysBetween(due,t0)):0;
     x.lateDone=x.t.status==='Completed'&&x.r.reqDate&&x.t.completedAt&&locDay(x.t.completedAt)>x.r.reqDate});
   const n=k=>stops.filter(x=>x.t.status===k).length;
   const done=n('Completed'),failed=n('Failed'),transit=n('In transit'),waiting=n('Routed'),late=stops.filter(x=>x.late).length;
@@ -1176,7 +1179,7 @@ function tripCard(rt){
   const flags=[info.failed?`<span class="tflag bad">${info.failed} failed</span>`:'',info.late?`<span class="tflag warn">${info.late} late</span>`:''].join('');
   const head=`<div class="trip-h">
       <span class="trip-ic ${info.failed||info.late?'bad':info.allClosed?'done':''}" aria-hidden="true">${info.failed||info.late?'!':info.allClosed?'✓':IC.routes?`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC.routes}</svg>`:'▶'}</span>
-      <span class="code trip-n">${esc(rt.name)}</span>${projTag(rt.projectId)}${rt.date<today()?`<span class="tflag warn" title="Planned for ${esc(fmtD(rt.date))}">From ${esc(fmtD(rt.date))}</span>`:''}
+      <span class="code trip-n">${esc(rt.name)}</span>${projTag(rt.projectId)}${tripDay(rt)<today()?`<span class="tflag warn" title="Requested for ${esc(fmtD(tripDay(rt)))}">Requested ${esc(fmtD(tripDay(rt)))}</span>`:''}
       <span class="who-a"><span class="avatar" aria-hidden="true">${esc(initials(ag.name))}</span><strong>${esc(ag.name||'No agent')}</strong></span>
       <span class="muted small">${esc([rt.groupId&&nm(state.routeGroups,rt.groupId),ag.vehicle].filter(Boolean).join(' · '))}</span>
       ${flags}
@@ -1196,14 +1199,14 @@ function routeMapPanel(){
   const day=ui.rmDay||'today';const d=day==='tomorrow'?dayStr(1):dayStr(0);
   /* Today = trips dated today, plus earlier trips that still have open stops or had a stop closed today */
   const touchedToday=r=>r.taskIds.some(id=>{const t=find(state.tasks,id);if(!t)return false;if(!['Completed','Failed'].includes(t.status))return true;const c=closedAt(t);return c&&locDay(c)===d});
-  const all=P(state.routes).filter(r=>r.date===d||(day!=='tomorrow'&&r.date<d&&touchedToday(r)));
+  const all=P(state.routes).filter(r=>{const td=tripDay(r);return td===d||(day!=='tomorrow'&&td<d&&touchedToday(r))});
   const agents=[...new Set(all.map(r=>r.agentId).filter(Boolean))].map(id=>[id,nm(state.agents,id)]).sort((a,b)=>a[1].localeCompare(b[1]));
   if(ui.rmAgent&&!agents.some(a=>a[0]===ui.rmAgent))ui.rmAgent='';
   const rs=all.filter(r=>!ui.rmAgent||r.agentId===ui.rmAgent).map(r=>({r,i:tripInfo(r)})).sort((a,b)=>a.i.rank-b.i.rank||a.r.name.localeCompare(b.r.name));
   const sum=k=>rs.reduce((a,x)=>a+x.i[k],0);const stops=rs.reduce((a,x)=>a+x.i.stops.length,0);
   const pill=(v,l,cls)=>`<div class="rsum-i ${cls||''} ${v?'':'zero'}"><b>${v}</b><span>${l}</span></div>`;
   return `<div class="panel rmap2">
-    <div class="spread" style="margin-bottom:12px"><div><h2>Route map</h2><p class="muted small">${esc(fmtD(d))}. ${day==='tomorrow'?'Trips planned for tomorrow.':'Trips planned for today, plus earlier trips still running or closed today.'} Trips that need attention come first; finished trips fold away.</p></div>
+    <div class="spread" style="margin-bottom:12px"><div><h2>Route map</h2><p class="muted small">${esc(fmtD(d))}. ${day==='tomorrow'?'Trips with orders requested for tomorrow.':'Trips with orders requested for today, plus earlier trips still running or closed today.'} Trips that need attention come first; finished trips fold away.</p></div>
       <div class="row"><div class="tabs" role="tablist" style="margin:0;border:0">${[['today','Today'],['tomorrow','Tomorrow']].map(([k,l])=>`<button class="tab ${day===k?'on':''}" role="tab" aria-selected="${day===k}" data-act="rmDay" data-k="${k}">${l}</button>`).join('')}</div>
       <label style="flex-direction:row;align-items:center;gap:6px">Agent<select data-chg="rmAgent"><option value="">All agents</option>${agents.map(a=>`<option value="${esc(a[0])}" ${ui.rmAgent===a[0]?'selected':''}>${esc(a[1])}</option>`).join('')}</select></label></div></div>
     <div class="rsum">${pill(rs.length,'Trips')}${pill(stops,'Stops')}${pill(sum('done'),'Done','ok')}${pill(sum('transit'),'On the way','go')}${pill(sum('waiting'),'Not started')}${pill(sum('failed'),'Failed','bad')}${pill(sum('late'),'Late','warn')}</div>
@@ -1941,14 +1944,14 @@ function dcSum(from,to){const pids=finPids();const inR=x=>x.date>=from&&x.date<=
   const t={shipTotal:0,shipCost:0,fees:0,paySales:0,payOrders:0,shipN:S.length,payN:Pm.length,byDay:{}};
   const day=d=>t.byDay[d]=t.byDay[d]||{shipTotal:0,shipCost:0,fees:0};
   S.forEach(x=>{t.shipTotal+=x.total;t.shipCost+=x.cost;const d=day(x.date);d.shipTotal+=x.total;d.shipCost+=x.cost});
-  Pm.forEach(x=>{t.fees+=x.fee;t.paySales+=x.sales;t.payOrders+=x.orders;day(x.date).fees+=x.fee});
+  Pm.forEach(x=>{t.fees+=x.fee;t.paySales+=x.sales;t.payShip=(t.payShip||0)+x.ship;t.payOrders+=x.orders;const dd=day(x.date);dd.fees+=x.fee;dd.collected=(dd.collected||0)+x.sales+x.ship});t.payShip=t.payShip||0;t.collected=t.paySales+t.payShip;
   t.shipProfit=t.shipTotal-t.shipCost;return t}
 function dcProjSel(){if(!isAll())return '';const ids=myProjIds();return `<label>Project<select name="projectId" required><option value="">Choose project</option>${ids.map(id=>`<option value="${esc(id)}">${esc(projCode(id)+': '+nm(state.projects,id))}</option>`).join('')}</select></label>`}
 function pgDailyCosts(u){
   if(!ui.project)return ph('dailycosts')+needProject();
   const t0=today();const from=ui.dcFrom||t0.slice(0,8)+'01',to=ui.dcTo||t0;const tab=ui.dcTab==='pay'?'pay':'ship';const pids=finPids();
   const sum=dcSum(from,to);const can=allowedPages(u).includes('dailycosts');
-  const tabs=[['ship','Shipping'],['pay','Payments']];const canSet=allowedPages(u).includes('costsetup');
+  const tabs=[['ship','Shipping'],['pay','E-service']];const canSet=allowedPages(u).includes('costsetup');
   const kp=(l,v,sub,warn)=>`<div class="kpi"><span class="kl">${l}</span><b class="${warn?'neg':''}">${v}</b><span class="ks">${sub}</span></div>`;
   const delBtn=(kind,x)=>can&&(u.role==='admin'||x.by===cur())?`<button class="btn plain sm" data-act="dcDel" data-kind="${kind}" data-id="${esc(x.id)}" aria-label="Delete this line">Delete</button>`:'';
   let body='';
@@ -1957,30 +1960,30 @@ function pgDailyCosts(u){
     body=`${can?`<div class="panel"><h2>Add shipping day</h2>${(state.shipCos||[]).length?`<form data-form="dcShip" class="fgrid" style="margin-top:10px">
       <label>Date<input type="date" name="date" value="${t0}" required></label>${dcProjSel()}
       <label>Shipping company<select name="co" required data-chg="dcShipCo"><option value="">Choose</option>${state.shipCos.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label>
-      <label>Total shipping<input type="number" name="total" min="0" step="0.01" required data-inp="dcCalc"></label>
+      <label>Total collected for shipping<input type="number" name="total" min="0" step="0.01" required data-inp="dcCalc"></label>
       <label>Cost %<input type="number" name="pct" min="0" max="1000" step="0.01" required data-inp="dcCalc"></label>
       <label>Note<input name="note" placeholder="Optional"></label>
       <div class="dc-prev small" style="align-self:end;padding-bottom:10px"></div>
-      <div style="grid-column:1/-1" class="row"><button class="btn" type="submit">Add</button><span class="small muted">Cost = total × cost %. Shipping profit = total − cost.</span></div><p class="err form-err hide" role="alert" style="grid-column:1/-1"></p></form>`:`<p class="muted small" style="margin-top:8px">${canSet?'Add your shipping companies first on <button class="link small" data-act="nav" data-page="costsetup">Shipping and payment rates</button>.':'No shipping companies are set up yet. Ask an administrator to add them on Shipping and payment rates.'}</p>`}
+      <div style="grid-column:1/-1" class="row"><button class="btn" type="submit">Add</button><span class="small muted">Shipping revenue = total collected. Cost = total × cost %. Shipping profit = revenue − cost.</span></div><p class="err form-err hide" role="alert" style="grid-column:1/-1"></p></form>`:`<p class="muted small" style="margin-top:8px">${canSet?'Add your shipping companies first on <button class="link small" data-act="nav" data-page="costsetup">Shipping and payment rates</button>.':'No shipping companies are set up yet. Ask an administrator to add them on Shipping and payment rates.'}</p>`}
       <div class="row" style="margin-top:12px;gap:8px"><label class="btn ghost sm" style="flex-direction:row;cursor:pointer">Import from Excel<input type="file" accept=".xlsx,.xls,.csv" data-chg="dcImpShip" class="sr-only"></label><button class="link small" data-act="dcTplShip">Download template</button></div><div id="dcImpMsg"></div></div>`:''}
-    ${L.length?table([{l:'Date'},...(isAll()?[{l:'Project'}]:[]),{l:'Shipping company'},{l:'Total shipping',num:1},{l:'Cost %',num:1},{l:'Cost',num:1},{l:'Shipping profit',num:1},{l:'Note'},{l:'Entered by'},{l:''}],
+    ${L.length?table([{l:'Date'},...(isAll()?[{l:'Project'}]:[]),{l:'Shipping company'},{l:'Shipping revenue',num:1},{l:'Cost %',num:1},{l:'Shipping cost',num:1},{l:'Shipping profit',num:1},{l:'Note'},{l:'Entered by'},{l:''}],
       [...L.map(x=>[fmtD(x.date),...(isAll()?[projCode(x.projectId)]:[]),x.co,{h:money(x.total)},{h:x.pct+'%'},{h:money(x.cost)},{h:`<span class="${x.total-x.cost<0?'neg':''}">${money(x.total-x.cost)}</span>`},x.note||'',x.by||'',H(delBtn('ship',x))]),
        [H('<strong>Total</strong>'),...(isAll()?['']:[]),'',{h:`<strong>${money(sum.shipTotal)}</strong>`},{h:sum.shipTotal?`<strong>${(100*sum.shipCost/sum.shipTotal).toFixed(1)}%</strong>`:''},{h:`<strong>${money(sum.shipCost)}</strong>`},{h:`<strong>${money(sum.shipProfit)}</strong>`},'','','']]):'<div class="panel empty">No shipping days in this period.</div>'}`;
   }else if(tab==='pay'){
     const L=(state.payDays||[]).filter(x=>x.date>=from&&x.date<=to&&pids.includes(x.projectId)).sort((a,b)=>b.date.localeCompare(a.date)||a.co.localeCompare(b.co)||a.method.localeCompare(b.method));
     const cos=state.payCos||[];
     const by={};L.forEach(x=>{const k=x.co+' · '+x.method;const r=by[k]=by[k]||{sales:0,ship:0,orders:0,fee:0};r.sales+=x.sales;r.ship+=x.ship;r.orders+=x.orders;r.fee+=x.fee});
-    body=`${can?`<div class="panel"><h2>Add payment day</h2>${cos.some(c=>c.methods.length)?`<form data-form="dcPay" class="fgrid" style="margin-top:10px">
+    body=`${can?`<div class="panel"><h2>Add e-service day</h2>${cos.some(c=>c.methods.length)?`<form data-form="dcPay" class="fgrid" style="margin-top:10px">
       <label>Date<input type="date" name="date" value="${t0}" required></label>${dcProjSel()}
       <label>Payment company · method<select name="method" required data-chg="dcPayM"><option value="">Choose</option>${cos.map(c=>`<optgroup label="${esc(c.name)}">${c.methods.map(m=>`<option value="${esc(c.id+'|'+m.id)}" data-pct="${m.pct}" data-fixed="${m.fixed}">${esc(c.name+' · '+m.name)} (${m.pct}% + ${money(m.fixed)})</option>`).join('')}</optgroup>`).join('')}</select></label>
-      <label>Total sales<input type="number" name="sales" min="0" step="0.01" required data-inp="dcCalc"></label>
-      <label>Shipping paid<input type="number" name="ship" min="0" step="0.01" value="0" data-inp="dcCalc"></label>
-      <label>Number of orders<input type="number" name="orders" min="0" step="1" required data-inp="dcCalc"></label>
+      <label>Total products amount<input type="number" name="sales" min="0" step="0.01" required data-inp="dcCalc"></label>
+      <label>Total shipping amount<input type="number" name="ship" min="0" step="0.01" value="0" data-inp="dcCalc"></label>
+      <label>Number of transactions<input type="number" name="orders" min="0" step="1" required data-inp="dcCalc"></label>
       <div class="dc-prev small" style="align-self:end;padding-bottom:10px"></div>
-      <div style="grid-column:1/-1" class="row"><button class="btn" type="submit">Add</button><span class="small muted">Fees = (sales + shipping paid) × fee % + orders × extra per order. The rate is saved with the line, so later rate changes don't change it.</span></div><p class="err form-err hide" role="alert" style="grid-column:1/-1"></p></form>`:`<p class="muted small" style="margin-top:8px">${canSet?'Add your payment companies and methods first on <button class="link small" data-act="nav" data-page="costsetup">Shipping and payment rates</button>.':'No payment companies are set up yet. Ask an administrator to add them on Shipping and payment rates.'}</p>`}
+      <div style="grid-column:1/-1" class="row"><button class="btn" type="submit">Add</button><span class="small muted">Fees = (products + shipping) × fee % + transactions × amount per transaction. The rate is saved with the line, so later rate changes don't change it.</span></div><p class="err form-err hide" role="alert" style="grid-column:1/-1"></p></form>`:`<p class="muted small" style="margin-top:8px">${canSet?'Add your payment companies and methods first on <button class="link small" data-act="nav" data-page="costsetup">Shipping and payment rates</button>.':'No payment companies are set up yet. Ask an administrator to add them on Shipping and payment rates.'}</p>`}
       <div class="row" style="margin-top:12px;gap:8px"><label class="btn ghost sm" style="flex-direction:row;cursor:pointer">Import from Excel<input type="file" accept=".xlsx,.xls,.csv" data-chg="dcImpPay" class="sr-only"></label><button class="link small" data-act="dcTplPay">Download template</button></div><div id="dcImpMsg"></div></div>`:''}
-    ${Object.keys(by).length?`<div class="panel"><h2 style="margin-bottom:8px">By company and method</h2>${table([{l:'Company · method'},{l:'Sales',num:1},{l:'Shipping paid',num:1},{l:'Orders',num:1},{l:'Fees',num:1},{l:'Fee % of amount',num:1}],Object.entries(by).sort((a,b)=>b[1].fee-a[1].fee).map(([k,r])=>[k,{h:money(r.sales)},{h:money(r.ship)},num(r.orders),{h:money(r.fee)},{h:r.sales+r.ship?(100*r.fee/(r.sales+r.ship)).toFixed(2)+'%':'–'}]))}</div>`:''}
-    ${L.length?table([{l:'Date'},...(isAll()?[{l:'Project'}]:[]),{l:'Company'},{l:'Method'},{l:'Sales',num:1},{l:'Shipping paid',num:1},{l:'Orders',num:1},{l:'Rate'},{l:'Fees',num:1},{l:'Entered by'},{l:''}],
+    ${Object.keys(by).length?`<div class="panel"><h2 style="margin-bottom:8px">By company and method</h2>${table([{l:'Company · method'},{l:'Products',num:1},{l:'Shipping',num:1},{l:'Transactions',num:1},{l:'Fees',num:1},{l:'E-service profit',num:1},{l:'Fee % of amount',num:1}],Object.entries(by).sort((a,b)=>b[1].fee-a[1].fee).map(([k,r])=>[k,{h:money(r.sales)},{h:money(r.ship)},num(r.orders),{h:money(r.fee)},{h:money(r.sales+r.ship-r.fee)},{h:r.sales+r.ship?(100*r.fee/(r.sales+r.ship)).toFixed(2)+'%':'–'}]))}</div>`:''}
+    ${L.length?table([{l:'Date'},...(isAll()?[{l:'Project'}]:[]),{l:'Company'},{l:'Method'},{l:'Products',num:1},{l:'Shipping',num:1},{l:'Transactions',num:1},{l:'Rate'},{l:'Fees',num:1},{l:'Entered by'},{l:''}],
       [...L.map(x=>[fmtD(x.date),...(isAll()?[projCode(x.projectId)]:[]),x.co,x.method,{h:money(x.sales)},{h:money(x.ship)},num(x.orders),`${x.pct}% + ${money(x.fixed)}`,{h:money(x.fee)},x.by||'',H(delBtn('pay',x))]),
        [H('<strong>Total</strong>'),...(isAll()?['']:[]),'','',{h:`<strong>${money(sum.paySales)}</strong>`},{h:`<strong>${money(L.reduce((a,x)=>a+x.ship,0))}</strong>`},{h:`<strong>${num(sum.payOrders)}</strong>`},'',{h:`<strong>${money(sum.fees)}</strong>`},'','']]):'<div class="panel empty">No payment days in this period.</div>'}`;
   }
@@ -2003,7 +2006,7 @@ function pgCostSetup(u){
 function dcHead(u,sum,tabs,tab,from,to){
   const kp=(l,v,sub,warn)=>`<div class="kpi"><span class="kl">${l}</span><b class="${warn?'neg':''}">${v}</b><span class="ks">${sub}</span></div>`;
   return ph('dailycosts','Shipping and payment costs entered as totals per day. They feed the net profit on the Profit overview.')+`
-  <div class="kpis" style="margin-bottom:12px">${kp('Total shipping',money(sum.shipTotal),num(sum.shipN)+' line'+(sum.shipN===1?'':'s'))}${kp('Shipping cost',money(sum.shipCost),sum.shipTotal?(100*sum.shipCost/sum.shipTotal).toFixed(1)+'% of total shipping':'–')}${kp('Shipping profit',money(sum.shipProfit),'Total − cost',sum.shipProfit<0)}${kp('Payment fees',money(sum.fees),num(sum.payOrders)+' orders, '+num(sum.payN)+' line'+(sum.payN===1?'':'s'))}</div>
+  <div class="kpis" style="margin-bottom:12px">${kp('Shipping revenue',money(sum.shipTotal),num(sum.shipN)+' line'+(sum.shipN===1?'':'s'))}${kp('Shipping cost',money(sum.shipCost),sum.shipTotal?(100*sum.shipCost/sum.shipTotal).toFixed(1)+'% of total shipping':'–')}${kp('Shipping profit',money(sum.shipProfit),'Revenue − cost',sum.shipProfit<0)}${kp('E-service fees',money(sum.fees),num(sum.payOrders)+' transactions, '+num(sum.payN)+' line'+(sum.payN===1?'':'s'))}${kp('E-service profit',money((sum.collected||0)-sum.fees),'Collected '+money(sum.collected||0)+' − fees')}</div>
   <div class="panel"><div class="spread"><div class="tabs" role="tablist" style="margin:0;border:0">${tabs.map(([k,l])=>`<button class="tab ${tab===k?'on':''}" role="tab" aria-selected="${tab===k}" data-act="dcTab" data-k="${k}">${l}</button>`).join('')}</div>
     ${true?`<div class="row"><label style="flex-direction:row;align-items:center;gap:6px">From<input type="date" data-chg="dcD" data-k="dcFrom" value="${from}"></label><label style="flex-direction:row;align-items:center;gap:6px">To<input type="date" data-chg="dcD" data-k="dcTo" value="${to}"></label><button class="btn ghost sm" data-act="dcExport">Export to Excel</button></div>`:''}</div></div>`;
 }
@@ -2022,8 +2025,8 @@ function dcImport(el,kind){const file=el.files&&el.files[0];if(!file)return;cons
         const co=(state.shipCos||[]).find(c=>c.name.toLowerCase()===String(r[ci]??'').trim().toLowerCase());if(!co){bad.push(`Line ${i+2}: shipping company "${esc(String(r[ci]??''))}" is not in the list`);return}
         const tot=n(r[ti]);if(!(tot>=0)){bad.push(`Line ${i+2}: total shipping is not a number`);return}const pc=pi>=0&&n(r[pi])!==null?n(r[pi]):co.pct;const pj=projOf(r,i);if(!pj)return;
         ok.push({date:d,projectId:pj,coId:co.id,co:co.name,total:tot,pct:pc,cost:tot*pc/100})})}
-    else{const ci=col(/payment comp|^company|provider/),mi=col(/method|type/),si=col(/sales/),shi=col(/ship/),oi=col(/order/);
-      if(di<0||ci<0||mi<0||si<0||oi<0){msg.innerHTML='<p class="err">The file needs Date, Payment company, Method, Total sales and Number of orders columns. Download the template to see the format.</p>';return}
+    else{const ci=col(/payment comp|^company|provider/),mi=col(/method|type/),si=col(/sales|product/),shi=col(/ship/),oi=col(/order|transaction/);
+      if(di<0||ci<0||mi<0||si<0||oi<0){msg.innerHTML='<p class="err">The file needs Date, Payment company, Method, Total products amount and Number of transactions columns. Download the template to see the format.</p>';return}
       rows.slice(1).forEach((r,i)=>{if(!r||r.every(c=>String(c??'').trim()===''))return;const d=parseDay(r[di]);if(!d){bad.push(`Line ${i+2}: date not understood`);return}
         const co=(state.payCos||[]).find(c=>c.name.toLowerCase()===String(r[ci]??'').trim().toLowerCase());if(!co){bad.push(`Line ${i+2}: payment company "${esc(String(r[ci]??''))}" is not in the list`);return}
         const m=co.methods.find(x=>x.name.toLowerCase()===String(r[mi]??'').trim().toLowerCase());if(!m){bad.push(`Line ${i+2}: method "${esc(String(r[mi]??''))}" is not set up for ${esc(co.name)}`);return}
@@ -2482,22 +2485,27 @@ function pgFinance(u){
       ${tile('GP margin',pct(a.gpm),'Gross profit ÷ revenue',a.gpm!==null&&b.gpm!==null?ovDelta(a.gpm,b.gpm,'pts',true):'',a.gpm!==null&&a.gpm<10)}
       ${tile('Waiting for COGS',money(a.missRev),`Revenue not in gross profit yet. ${pend.length} receipt line${pend.length===1?' needs':'s need'} a cost.`,'',a.missRev>0||pend.length>0)}
     </div>
-    ${(()=>{const dc=dcSum(pr.from,pr.to),dp=dcSum(pr.pFrom,pr.pTo);const net=a.gp+dc.shipProfit-dc.fees,pnet=b.gp+dp.shipProfit-dp.fees;const nm2=a.revC?100*net/a.revC:null,pnm=b.revC?100*pnet/b.revC:null;
-      return `<h3 style="margin:16px 0 8px">After shipping and payment fees</h3><div class="kpis">
-      ${tile('Shipping profit',money(dc.shipProfit),dc.shipN?`${money(dc.shipTotal)} shipping − ${money(dc.shipCost)} cost`:'No shipping days entered',d(dc.shipProfit,dp.shipProfit,'pct',true),dc.shipProfit<0)}
-      ${tile('Payment fees',money(dc.fees),dc.payN?`${num(dc.payOrders)} orders`:'No payment days entered',d(dc.fees,dp.fees,'pct',false))}
-      ${tile('Net profit',money(net),'Gross profit + shipping profit − payment fees',d(net,pnet,'pct',true),net<0)}
+    ${(()=>{const dc=dcSum(pr.from,pr.to),dp=dcSum(pr.pFrom,pr.pTo);const net=a.gp+dc.shipProfit+(dc.collected-dc.fees),pnet=b.gp+dp.shipProfit+(dp.collected-dp.fees);const nm2=a.revC?100*net/a.revC:null,pnm=b.revC?100*pnet/b.revC:null;
+      return `<h3 style="margin:16px 0 8px">Shipping and e-service</h3><div class="kpis">
+      ${tile('Shipping revenue',money(dc.shipTotal),dc.shipN?'Total collected for shipping':'No shipping days entered',d(dc.shipTotal,dp.shipTotal,'pct',true))}
+      ${tile('Shipping cost',money(dc.shipCost),dc.shipTotal?(100*dc.shipCost/dc.shipTotal).toFixed(1)+'% of shipping revenue':'–',d(dc.shipCost,dp.shipCost,'pct',false))}
+      ${tile('Shipping profit',money(dc.shipProfit),'Shipping revenue − shipping cost',d(dc.shipProfit,dp.shipProfit,'pct',true),dc.shipProfit<0)}
+      ${tile('E-service collected',money(dc.collected),dc.payN?`Products ${money(dc.paySales)} + shipping ${money(dc.payShip)}, ${num(dc.payOrders)} transactions`:'No e-service days entered',d(dc.collected,dp.collected,'pct',true))}
+      ${tile('E-service fees',money(dc.fees),dc.collected?(100*dc.fees/dc.collected).toFixed(2)+'% of the amount collected':'–',d(dc.fees,dp.fees,'pct',false))}
+      ${tile('E-service profit',money(dc.collected-dc.fees),'Collected − fees, the amount that reaches you',d(dc.collected-dc.fees,dp.collected-dp.fees,'pct',true))}
+      </div><h3 style="margin:16px 0 8px">Net</h3><div class="kpis">
+      ${tile('Net profit',money(net),'Gross profit + shipping profit + e-service profit',d(net,pnet,'pct',true),net<0)}
       ${tile('Net margin',nm2===null?'–':nm2.toFixed(1)+'%','Net profit ÷ revenue',nm2!==null&&pnm!==null?ovDelta(nm2,pnm,'pts',true):'',nm2!==null&&nm2<0)}
-      </div>${pfActive()?'<p class="small muted" style="margin-top:6px">Shipping and payment costs are day totals, so they are not reduced by the product filters.</p>':''}`})()}
+      </div>${pfActive()?'<p class="small muted" style="margin-top:6px">Shipping and e-service figures are day totals, so they are not reduced by the product filters.</p>':''}`})()}
     ${a.retNoPrice?`<p class="small" style="margin-top:10px;color:var(--bad)"><strong>${a.retNoPrice} return${a.retNoPrice===1?' has':'s have'} no price.</strong> ${a.retNoPrice===1?'Its':'Their'} cost is taken off COGS but nothing is taken off revenue, so gross profit looks higher than it is. Set the prices with <strong>Edit prices</strong> on the return in Sales.</p>`:''}
     ${a.missRev||pend.length?`<p class="small" style="margin-top:10px;color:var(--warn)">Gross profit counts only sales whose batch has a cost. ${allowedPages(u).includes('cogs')?'<button class="link small" data-act="nav" data-page="cogs">Enter the missing COGS</button>':'Ask a user with COGS access to enter the missing costs.'}</p>`:''}
   </div>
   ${(()=>{const dc=dcSum(pr.from,pr.to);const days=daysBetween(pr.from,pr.to)+1;if(days>62)return '';const rows=[];let tt={rev:0,cogs:0,gp:0,sp:0,fee:0,net:0};
-    for(let i=0;i<days;i++){const dd=addDays(pr.from,i);const Ld=L.filter(z=>z.d===dd);const f=finSum(Ld);const c=dc.byDay[dd]||{shipTotal:0,shipCost:0,fees:0};const sp=c.shipTotal-c.shipCost;const net=f.gp+sp-c.fees;
+    for(let i=0;i<days;i++){const dd=addDays(pr.from,i);const Ld=L.filter(z=>z.d===dd);const f=finSum(Ld);const c=dc.byDay[dd]||{shipTotal:0,shipCost:0,fees:0};const sp=c.shipTotal-c.shipCost;const ep=(c.collected||0)-c.fees;const net=f.gp+sp+ep;tt.sr=(tt.sr||0)+c.shipTotal;tt.sc=(tt.sc||0)+c.shipCost;tt.ep=(tt.ep||0)+ep;
       if(!Ld.length&&!dc.byDay[dd])continue;tt.rev+=f.rev;tt.cogs+=f.cogs;tt.gp+=f.gp;tt.sp+=sp;tt.fee+=c.fees;tt.net+=net;
-      rows.push([fmtD(dd),{h:money(f.rev)},{h:money(f.cogs)},{h:money(f.gp)},{h:money(sp)},{h:money(c.fees)},{h:`<span class="${net<0?'neg':''}">${money(net)}</span>`},{h:f.revC?(100*net/f.revC).toFixed(1)+'%':'–'}])}
-    if(!rows.length)return '';rows.reverse();rows.push([H('<strong>Total</strong>'),{h:`<strong>${money(tt.rev)}</strong>`},{h:`<strong>${money(tt.cogs)}</strong>`},{h:`<strong>${money(tt.gp)}</strong>`},{h:`<strong>${money(tt.sp)}</strong>`},{h:`<strong>${money(tt.fee)}</strong>`},{h:`<strong>${money(tt.net)}</strong>`},'']);
-    return `<div class="panel"><h2 style="margin-bottom:8px">Daily P&amp;L</h2>${table([{l:'Day'},{l:'Revenue',num:1},{l:'COGS',num:1},{l:'Gross profit',num:1},{l:'Shipping profit',num:1},{l:'Payment fees',num:1},{l:'Net profit',num:1},{l:'Net margin',num:1}],rows)}</div>`})()}
+      rows.push([fmtD(dd),{h:money(f.rev)},{h:money(f.cogs)},{h:money(f.gp)},{h:money(c.shipTotal)},{h:money(c.shipCost)},{h:money(ep)},{h:`<span class="${net<0?'neg':''}">${money(net)}</span>`},{h:f.revC?(100*net/f.revC).toFixed(1)+'%':'–'}])}
+    if(!rows.length)return '';rows.reverse();rows.push([H('<strong>Total</strong>'),{h:`<strong>${money(tt.rev)}</strong>`},{h:`<strong>${money(tt.cogs)}</strong>`},{h:`<strong>${money(tt.gp)}</strong>`},{h:`<strong>${money(tt.sr||0)}</strong>`},{h:`<strong>${money(tt.sc||0)}</strong>`},{h:`<strong>${money(tt.ep||0)}</strong>`},{h:`<strong>${money(tt.net)}</strong>`},'']);
+    return `<div class="panel"><h2 style="margin-bottom:8px">Daily P&amp;L</h2>${table([{l:'Day'},{l:'Revenue',num:1},{l:'COGS',num:1},{l:'Gross profit',num:1},{l:'Shipping revenue',num:1},{l:'Shipping cost',num:1},{l:'E-service profit',num:1},{l:'Net profit',num:1},{l:'Net margin',num:1}],rows)}</div>`})()}
   ${invValuePanel()}
   <div class="panel"><div class="spread"><h2>Revenue and COGS ${T.byMonth?'by month':'by day'}</h2><div class="row small"><span class="lg"><i class="b-rev"></i>Revenue</span><span class="lg"><i class="b-cogs"></i>COGS</span><span class="lg"><i class="l-gp"></i>Gross profit</span></div></div>
     ${a.rev?`<div class="trend-w">${trendSvg(T)}</div>`:'<p class="muted small">No sales in this period.</p>'}</div>
@@ -3518,8 +3526,8 @@ const acts={
       ['Revenue',a.rev],['COGS',a.cogs],['Gross profit',a.gp],['GP margin %',a.gpm===null?'':Number(a.gpm.toFixed(2))],['Revenue waiting for COGS',a.missRev],['Inventory value at COGS',iv.value],['Units on hand without cost',iv.unc]];
     const sheets=[['Summary',sum]];
     FIN_DIMS.filter(x=>x[0]!=='project'||isAll()).forEach(([k,l])=>{const G=finGroup(L,k).sort((x,y)=>y.rev-x.rev);sheets.push(['By '+l.toLowerCase(),[[l,'Units','Revenue','COGS','Gross profit','GP margin %'],...G.map(g=>[g.label,g.q,g.rev,g.cogs,g.gp,g.gpm===null?'':Number(g.gpm.toFixed(2))])]])});
-    {const dc=dcSum(pr.from,pr.to);const net=a.gp+dc.shipProfit-dc.fees;sum.push([],['Total shipping',dc.shipTotal],['Shipping cost',dc.shipCost],['Shipping profit',dc.shipProfit],['Payment fees',dc.fees],['Net profit',net],['Net margin %',a.revC?Number((100*net/a.revC).toFixed(2)):'']);
-     const dl=[['Day','Revenue','COGS','Gross profit','Shipping profit','Payment fees','Net profit']];const days=daysBetween(pr.from,pr.to)+1;for(let i=0;i<days&&i<400;i++){const dd=addDays(pr.from,i);const f=finSum(L.filter(z=>z.d===dd));const c=dc.byDay[dd]||{shipTotal:0,shipCost:0,fees:0};if(!f.rev&&!dc.byDay[dd])continue;const sp=c.shipTotal-c.shipCost;dl.push([dd,f.rev,f.cogs,f.gp,sp,c.fees,f.gp+sp-c.fees])}sheets.push(['Daily P&L',dl])}
+    {const dc=dcSum(pr.from,pr.to);const net=a.gp+dc.shipProfit+(dc.collected-dc.fees);sum.push([],['Shipping revenue',dc.shipTotal],['Shipping cost',dc.shipCost],['Shipping profit',dc.shipProfit],['E-service collected',dc.collected],['E-service fees',dc.fees],['E-service profit',dc.collected-dc.fees],['Net profit',net],['Net margin %',a.revC?Number((100*net/a.revC).toFixed(2)):'']);
+     const dl=[['Day','Revenue','COGS','Gross profit','Shipping revenue','Shipping cost','E-service profit','Net profit']];const days=daysBetween(pr.from,pr.to)+1;for(let i=0;i<days&&i<400;i++){const dd=addDays(pr.from,i);const f=finSum(L.filter(z=>z.d===dd));const c=dc.byDay[dd]||{shipTotal:0,shipCost:0,fees:0};if(!f.rev&&!dc.byDay[dd])continue;const sp=c.shipTotal-c.shipCost;const ep=(c.collected||0)-c.fees;dl.push([dd,f.rev,f.cogs,f.gp,c.shipTotal,c.shipCost,ep,f.gp+sp+ep])}sheets.push(['Daily P&L',dl])}
     sheets.push(['Sale lines',[['Date','Sale','Reference','Channel','Customer','Product ID','Product','Category','Company','Batch','Sold from','Qty','Unit price','Revenue','Unit COGS','COGS','Gross profit'],...L.map(z=>{const c=find(state.customers,z.x.customerId);const lc=saleLoc(z.x,z.l);return [z.d,z.x.id,z.x.ref,saleCh(z.x),c?custLabel(c):'',z.p.code||'',z.p.name||'',z.p.category||'',z.p.company||'',batchNo(state,z.l.batchId)||'',lc?locName(state,lc):'',z.q,Number(z.l.price)||0,z.rev,z.uc===null?'':Number(z.uc.toFixed(4)),z.cogs===null?'':z.cogs,z.cogs===null?'':z.rev-z.cogs]})]]);
     const base='daf-profit-'+pr.from+'-to-'+pr.to;
     if(window.XLSX){const wb=XLSX.utils.book_new();sheets.forEach(([n,rows])=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=rows[0]&&rows[0].length>2?rows[0].map((h,i)=>({wch:i===0?28:14})):[{wch:28},{wch:20}];XLSX.utils.book_append_sheet(wb,ws,n.slice(0,31))});await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
@@ -3550,12 +3558,12 @@ const acts={
   dcCoDel(el){act(s=>{if(el.dataset.kind==='ship'){const c=(s.shipCos||[]).find(x=>x.id===el.dataset.id);if((s.shipDays||[]).some(x=>x.coId===c.id))throw new Error(c.name+' has shipping days. It can only be deleted when it has none.');s.shipCos=s.shipCos.filter(x=>x.id!==c.id);log(s,'Shipping company deleted',null,c.name,'')}
     else{const c=(s.payCos||[]).find(x=>x.id===el.dataset.id);if((s.payDays||[]).some(x=>x.coId===c.id))throw new Error(c.name+' has payment days. It can only be deleted when it has none.');s.payCos=s.payCos.filter(x=>x.id!==c.id);log(s,'Payment company deleted',null,c.name,'')}},'Deleted.')},
   dcMethDel(el){act(s=>{const c=(s.payCos||[]).find(x=>x.id===el.dataset.co);const m=c&&c.methods.find(x=>x.id===el.dataset.id);if(!m)throw new Error('Not found.');if((s.payDays||[]).some(x=>x.methodId===m.id))throw new Error(m.name+' has payment days. It can only be deleted when it has none.');c.methods=c.methods.filter(x=>x.id!==m.id);log(s,'Payment method deleted',null,c.name+' '+m.name,'')},'Deleted.')},
-  async dcTplShip(){const rows=[['Date','Shipping company','Total shipping','Cost %',...(isAll()?['Project']:[])],[today(),(state.shipCos[0]||{name:'BOSTA'}).name,10000,65,...(isAll()?[projCode(myProjIds()[0])]:[])]];if(!window.XLSX)return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:20},{wch:16},{wch:10},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Shipping');await saveFile('daf-shipping-days-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
-  async dcTplPay(){const c=(state.payCos||[])[0]||{name:'Paymob',methods:[{name:'Visa'}]};const rows=[['Date','Payment company','Method','Total sales','Shipping paid','Number of orders',...(isAll()?['Project']:[])],[today(),c.name,(c.methods[0]||{name:'Visa'}).name,40000,2000,50,...(isAll()?[projCode(myProjIds()[0])]:[])]];if(!window.XLSX)return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:18},{wch:12},{wch:14},{wch:14},{wch:16},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Payments');await saveFile('daf-payment-days-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
+  async dcTplShip(){const rows=[['Date','Shipping company','Total collected for shipping','Cost %',...(isAll()?['Project']:[])],[today(),(state.shipCos[0]||{name:'BOSTA'}).name,10000,65,...(isAll()?[projCode(myProjIds()[0])]:[])]];if(!window.XLSX)return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:20},{wch:16},{wch:10},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Shipping');await saveFile('daf-shipping-days-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
+  async dcTplPay(){const c=(state.payCos||[])[0]||{name:'Paymob',methods:[{name:'Visa'}]};const rows=[['Date','Payment company','Method','Total products amount','Total shipping amount','Number of transactions',...(isAll()?['Project']:[])],[today(),c.name,(c.methods[0]||{name:'Visa'}).name,40000,2000,50,...(isAll()?[projCode(myProjIds()[0])]:[])]];if(!window.XLSX)return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:18},{wch:12},{wch:14},{wch:14},{wch:16},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Payments');await saveFile('daf-payment-days-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
   async dcExport(){const t0=today();const from=ui.dcFrom||t0.slice(0,8)+'01',to=ui.dcTo||t0;const pids=finPids();const inR=x=>x.date>=from&&x.date<=to&&pids.includes(x.projectId);
-    const sh=[['Date','Project','Shipping company','Total shipping','Cost %','Cost','Shipping profit','Note','Entered by'],...(state.shipDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.total,x.pct,x.cost,x.total-x.cost,x.note||'',x.by||''])];
-    const py=[['Date','Project','Payment company','Method','Total sales','Shipping paid','Number of orders','Fee %','Extra per order','Fees','Entered by'],...(state.payDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.method,x.sales,x.ship,x.orders,x.pct,x.fixed,x.fee,x.by||''])];
-    if(!window.XLSX)return;const wb=XLSX.utils.book_new();[['Shipping',sh],['Payments',py]].forEach(([n,r])=>{const ws=XLSX.utils.aoa_to_sheet(r);ws['!cols']=r[0].map(()=>({wch:16}));XLSX.utils.book_append_sheet(wb,ws,n)});await saveFile('daf-daily-costs-'+from+'-to-'+to+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
+    const sh=[['Date','Project','Shipping company','Shipping revenue','Cost %','Shipping cost','Shipping profit','Note','Entered by'],...(state.shipDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.total,x.pct,x.cost,x.total-x.cost,x.note||'',x.by||''])];
+    const py=[['Date','Project','Payment company','Method','Products amount','Shipping amount','Transactions','Fee %','Amount per transaction','Fees','E-service profit','Entered by'],...(state.payDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.method,x.sales,x.ship,x.orders,x.pct,x.fixed,x.fee,x.sales+x.ship-x.fee,x.by||''])];
+    if(!window.XLSX)return;const wb=XLSX.utils.book_new();[['Shipping',sh],['E-service',py]].forEach(([n,r])=>{const ws=XLSX.utils.aoa_to_sheet(r);ws['!cols']=r[0].map(()=>({wch:16}));XLSX.utils.book_append_sheet(wb,ws,n)});await saveFile('daf-daily-costs-'+from+'-to-'+to+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
   rmDay(el){ui.rmDay=el.dataset.k;render()},
   rmToggle(el){ui.rmOpen=ui.rmOpen||{};ui.rmOpen[el.dataset.id]=!ui.rmOpen[el.dataset.id];render()},
   stopOpen(el){openStop(el.dataset.id)},
