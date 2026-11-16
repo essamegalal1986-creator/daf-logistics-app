@@ -362,6 +362,7 @@ tr.cg-need td{background:var(--warn-soft)}
 .xb-l{font-size:13px;font-weight:700;color:var(--muted)}.xbox b{font-size:24px;font-family:var(--head,inherit);line-height:1.15}.xbox b small{font-size:13px;font-weight:600;color:var(--muted)}
 .xb-v{font-weight:700;font-size:14px}.xb-s{font-size:12px;color:var(--muted)}
 .ptag.ret{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.dc-pc+.dc-pc{border-top:1px solid var(--line);padding-top:10px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .kpi,.stat,.rsum-i,.xbox{min-width:0;overflow:hidden}
 .kpi>b,.stat>b,.rsum-i>b,.xbox>b{display:block;white-space:nowrap;overflow:hidden;max-width:100%}
@@ -503,6 +504,8 @@ const PAGES=[
   ['finance','Profit overview',''],
   ['cogs','COGS required',''],
   ['receipts','Received details',''],
+  ['dailycosts','Daily costs',''],
+  ['costsetup','Shipping and payment rates',''],
   ['tickets','Tickets',''],
   ['report','Activity report','10'],
   ['users','Users and access','']
@@ -697,6 +700,8 @@ function migrate(s){
   if(!s.hasReturnSales&&s.requests&&s.sales&&s.seq){(s.requests||[]).filter(r=>r.type==='Return'&&r.status==='Completed'&&!s.sales.some(x=>x.ref===r.ref)).forEach(r=>{const t=(s.tasks||[]).find(x=>x.requestId===r.id)||{};const ca=retConfirmedAt(s,r);const sale=returnSale(s,r,t.agentId,locDay(ca)||today());if(ca)sale.at=ca});s.hasReturnSales=true}
   if(!s.retDateFix&&s.sales){(s.sales||[]).filter(x=>x.ret).forEach(x=>{const r=(s.requests||[]).find(q=>q.ref===x.ref);if(!r)return;const ca=retConfirmedAt(s,r);if(ca){x.date=locDay(ca);x.at=ca}});s.retDateFix=true}
   if(!s.catList||!s.compList){const u=k=>[...new Set((s.products||[]).map(p=>String(p[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));s.catList=s.catList||u('category');s.compList=s.compList||u('company')}
+  if(!s.hasCostSetup){(s.users||[]).forEach(u=>{if(u.pages&&u.role==='admin'&&!u.pages.includes('costsetup'))u.pages.push('costsetup')});s.hasCostSetup=true}
+  if(!s.hasDailyCosts){s.shipCos=s.shipCos||[];s.payCos=s.payCos||[];s.shipDays=s.shipDays||[];s.payDays=s.payDays||[];(s.users||[]).forEach(u=>{if(u.pages&&u.role==='admin'&&!u.pages.includes('dailycosts'))u.pages.push('dailycosts')});s.hasDailyCosts=true}
   if(!s.hasReceiptsPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('receipts')&&(u.role==='admin'||u.role==='viewer'||u.pages.includes('inventory')))u.pages.push('receipts')});s.hasReceiptsPage=true}
   if(!s.hasFinancePages){(s.users||[]).forEach(u=>{if(!u.pages)return;if((u.role==='admin'||u.role==='viewer')&&!u.pages.includes('finance'))u.pages.push('finance');if(u.role==='admin'&&!u.pages.includes('cogs'))u.pages.push('cogs')});s.hasFinancePages=true}
   if(!s.hasStockSumPage){(s.users||[]).forEach(u=>{if(u.pages&&!u.pages.includes('stocksum')&&(u.role==='viewer'||u.role==='admin'||u.pages.includes('inventory')))u.pages.push('stocksum')});s.hasStockSumPage=true}
@@ -1042,6 +1047,8 @@ const IC={
   movements:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
   stocksum:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>',
   finance:'<path d="M3 20h18"/><path d="M6 16v-5M11 16V7M16 16v-8"/><path d="m4 9 6-5 4 3 6-4"/>',
+  costsetup:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  dailycosts:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3M8 17h6"/>',
   receipts:'<path d="M4 4h16v16H4z"/><path d="M12 7v7M8.5 10.5 12 14l3.5-3.5M8 17h8"/>',
   cogs:'<circle cx="12" cy="12" r="9"/><path d="M15 8.5c-.6-.9-1.7-1.5-3-1.5-1.9 0-3.2 1-3.2 2.4 0 3.2 6.4 1.7 6.4 5 0 1.5-1.4 2.6-3.3 2.6-1.4 0-2.6-.6-3.2-1.6M12 5v2M12 17v2"/>',
   stockcheck:'<path d="M4 5v14M7 5v14M10 5v14M14 5v14M17 5v10M20 5v14"/><path d="m15 18 2 2 4-4"/>',
@@ -1053,7 +1060,7 @@ const IC={
   depot:'<path d="M3 21V9l9-6 9 6v12"/><path d="M8 21v-6h8v6"/>'
 };
 function icon(k){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]||IC.dashboard}</svg>`}
-const NAV_GROUPS=[['Overview',['dashboard']],['Orders',['requests','prepare','sales']],['Delivery',['routes','mytasks','tickets']],['Warehouse',['inventory','receipts','stocksum','movements','stockcheck']],['Finance',['finance','cogs']],['Master data',['projects','products','setup']],['Administration',['report','users']]];
+const NAV_GROUPS=[['Overview',['dashboard']],['Orders',['requests','prepare','sales']],['Delivery',['routes','mytasks','tickets']],['Warehouse',['inventory','receipts','stocksum','movements','stockcheck']],['Finance',['finance','dailycosts','costsetup','cogs']],['Master data',['projects','products','setup']],['Administration',['report','users']]];
 function groupOf(id){const g=NAV_GROUPS.find(x=>x[1].includes(id));return g?g[0]:''}
 function initials2(n){return String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 function shell(u,pages,projs){
@@ -1095,7 +1102,7 @@ function table(cols,rows,emptyMsg){
 const H=h=>({h});
 
 function page(u){
-  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,receipts:pgReceipts,finance:pgFinance,cogs:pgCogs,stocksum:pgStockSum,tickets:pgTickets,movements:pgMovements,report:pgReport,users:pgUsers};
+  const map={dashboard:pgDashboard,projects:pgProjects,products:pgProducts,setup:pgSetup,requests:pgRequests,prepare:pgPrepare,routes:pgRoutes,mytasks:pgMyTasks,sales:pgSales,inventory:pgInventory,stockcheck:pgStockCheck,receipts:pgReceipts,dailycosts:pgDailyCosts,costsetup:pgCostSetup,finance:pgFinance,cogs:pgCogs,stocksum:pgStockSum,tickets:pgTickets,movements:pgMovements,report:pgReport,users:pgUsers};
   return map[ui.page](u);
 }
 
@@ -1924,6 +1931,106 @@ function pgReceipts(u){
     ${d.rows.length>shown.length?`<p class="small muted" style="margin-top:6px">Showing the latest ${shown.length} of ${num(d.rows.length)} rows. The Excel export has all of them.</p>`:''}`
   :'<div class="panel empty">Nothing received matches these filters.</div>'}`;
 }
+/* ===== Daily costs: shipping and payment fees entered as day totals ===== */
+function parseDay(v){if(v===null||v===undefined||v==='')return '';if(v instanceof Date&&!isNaN(v))return v.getFullYear()+'-'+pad(v.getMonth()+1,2)+'-'+pad(v.getDate(),2);
+  if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1,2)+'-'+pad(d.getUTCDate(),2)}
+  const t=String(v).trim();let m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+'-'+pad(+m[2],2)+'-'+pad(+m[3],2);m=t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);if(m)return m[3]+'-'+pad(+m[2],2)+'-'+pad(+m[1],2);return null}
+function payFee(sales,ship,orders,pct,fixed){return ((Number(sales)||0)+(Number(ship)||0))*(Number(pct)||0)/100+(Number(orders)||0)*(Number(fixed)||0)}
+function dcSum(from,to){const pids=finPids();const inR=x=>x.date>=from&&x.date<=to&&pids.includes(x.projectId);
+  const S=(state.shipDays||[]).filter(inR),Pm=(state.payDays||[]).filter(inR);
+  const t={shipTotal:0,shipCost:0,fees:0,paySales:0,payOrders:0,shipN:S.length,payN:Pm.length,byDay:{}};
+  const day=d=>t.byDay[d]=t.byDay[d]||{shipTotal:0,shipCost:0,fees:0};
+  S.forEach(x=>{t.shipTotal+=x.total;t.shipCost+=x.cost;const d=day(x.date);d.shipTotal+=x.total;d.shipCost+=x.cost});
+  Pm.forEach(x=>{t.fees+=x.fee;t.paySales+=x.sales;t.payOrders+=x.orders;day(x.date).fees+=x.fee});
+  t.shipProfit=t.shipTotal-t.shipCost;return t}
+function dcProjSel(){if(!isAll())return '';const ids=myProjIds();return `<label>Project<select name="projectId" required><option value="">Choose project</option>${ids.map(id=>`<option value="${esc(id)}">${esc(projCode(id)+': '+nm(state.projects,id))}</option>`).join('')}</select></label>`}
+function pgDailyCosts(u){
+  if(!ui.project)return ph('dailycosts')+needProject();
+  const t0=today();const from=ui.dcFrom||t0.slice(0,8)+'01',to=ui.dcTo||t0;const tab=ui.dcTab==='pay'?'pay':'ship';const pids=finPids();
+  const sum=dcSum(from,to);const can=allowedPages(u).includes('dailycosts');
+  const tabs=[['ship','Shipping'],['pay','Payments']];const canSet=allowedPages(u).includes('costsetup');
+  const kp=(l,v,sub,warn)=>`<div class="kpi"><span class="kl">${l}</span><b class="${warn?'neg':''}">${v}</b><span class="ks">${sub}</span></div>`;
+  const delBtn=(kind,x)=>can&&(u.role==='admin'||x.by===cur())?`<button class="btn plain sm" data-act="dcDel" data-kind="${kind}" data-id="${esc(x.id)}" aria-label="Delete this line">Delete</button>`:'';
+  let body='';
+  if(tab==='ship'){
+    const L=(state.shipDays||[]).filter(x=>x.date>=from&&x.date<=to&&pids.includes(x.projectId)).sort((a,b)=>b.date.localeCompare(a.date)||a.co.localeCompare(b.co));
+    body=`${can?`<div class="panel"><h2>Add shipping day</h2>${(state.shipCos||[]).length?`<form data-form="dcShip" class="fgrid" style="margin-top:10px">
+      <label>Date<input type="date" name="date" value="${t0}" required></label>${dcProjSel()}
+      <label>Shipping company<select name="co" required data-chg="dcShipCo"><option value="">Choose</option>${state.shipCos.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label>
+      <label>Total shipping<input type="number" name="total" min="0" step="0.01" required data-inp="dcCalc"></label>
+      <label>Cost %<input type="number" name="pct" min="0" max="1000" step="0.01" required data-inp="dcCalc"></label>
+      <label>Note<input name="note" placeholder="Optional"></label>
+      <div class="dc-prev small" style="align-self:end;padding-bottom:10px"></div>
+      <div style="grid-column:1/-1" class="row"><button class="btn" type="submit">Add</button><span class="small muted">Cost = total × cost %. Shipping profit = total − cost.</span></div><p class="err form-err hide" role="alert" style="grid-column:1/-1"></p></form>`:`<p class="muted small" style="margin-top:8px">${canSet?'Add your shipping companies first on <button class="link small" data-act="nav" data-page="costsetup">Shipping and payment rates</button>.':'No shipping companies are set up yet. Ask an administrator to add them on Shipping and payment rates.'}</p>`}
+      <div class="row" style="margin-top:12px;gap:8px"><label class="btn ghost sm" style="flex-direction:row;cursor:pointer">Import from Excel<input type="file" accept=".xlsx,.xls,.csv" data-chg="dcImpShip" class="sr-only"></label><button class="link small" data-act="dcTplShip">Download template</button></div><div id="dcImpMsg"></div></div>`:''}
+    ${L.length?table([{l:'Date'},...(isAll()?[{l:'Project'}]:[]),{l:'Shipping company'},{l:'Total shipping',num:1},{l:'Cost %',num:1},{l:'Cost',num:1},{l:'Shipping profit',num:1},{l:'Note'},{l:'Entered by'},{l:''}],
+      [...L.map(x=>[fmtD(x.date),...(isAll()?[projCode(x.projectId)]:[]),x.co,{h:money(x.total)},{h:x.pct+'%'},{h:money(x.cost)},{h:`<span class="${x.total-x.cost<0?'neg':''}">${money(x.total-x.cost)}</span>`},x.note||'',x.by||'',H(delBtn('ship',x))]),
+       [H('<strong>Total</strong>'),...(isAll()?['']:[]),'',{h:`<strong>${money(sum.shipTotal)}</strong>`},{h:sum.shipTotal?`<strong>${(100*sum.shipCost/sum.shipTotal).toFixed(1)}%</strong>`:''},{h:`<strong>${money(sum.shipCost)}</strong>`},{h:`<strong>${money(sum.shipProfit)}</strong>`},'','','']]):'<div class="panel empty">No shipping days in this period.</div>'}`;
+  }else if(tab==='pay'){
+    const L=(state.payDays||[]).filter(x=>x.date>=from&&x.date<=to&&pids.includes(x.projectId)).sort((a,b)=>b.date.localeCompare(a.date)||a.co.localeCompare(b.co)||a.method.localeCompare(b.method));
+    const cos=state.payCos||[];
+    const by={};L.forEach(x=>{const k=x.co+' · '+x.method;const r=by[k]=by[k]||{sales:0,ship:0,orders:0,fee:0};r.sales+=x.sales;r.ship+=x.ship;r.orders+=x.orders;r.fee+=x.fee});
+    body=`${can?`<div class="panel"><h2>Add payment day</h2>${cos.some(c=>c.methods.length)?`<form data-form="dcPay" class="fgrid" style="margin-top:10px">
+      <label>Date<input type="date" name="date" value="${t0}" required></label>${dcProjSel()}
+      <label>Payment company · method<select name="method" required data-chg="dcPayM"><option value="">Choose</option>${cos.map(c=>`<optgroup label="${esc(c.name)}">${c.methods.map(m=>`<option value="${esc(c.id+'|'+m.id)}" data-pct="${m.pct}" data-fixed="${m.fixed}">${esc(c.name+' · '+m.name)} (${m.pct}% + ${money(m.fixed)})</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label>Total sales<input type="number" name="sales" min="0" step="0.01" required data-inp="dcCalc"></label>
+      <label>Shipping paid<input type="number" name="ship" min="0" step="0.01" value="0" data-inp="dcCalc"></label>
+      <label>Number of orders<input type="number" name="orders" min="0" step="1" required data-inp="dcCalc"></label>
+      <div class="dc-prev small" style="align-self:end;padding-bottom:10px"></div>
+      <div style="grid-column:1/-1" class="row"><button class="btn" type="submit">Add</button><span class="small muted">Fees = (sales + shipping paid) × fee % + orders × extra per order. The rate is saved with the line, so later rate changes don't change it.</span></div><p class="err form-err hide" role="alert" style="grid-column:1/-1"></p></form>`:`<p class="muted small" style="margin-top:8px">${canSet?'Add your payment companies and methods first on <button class="link small" data-act="nav" data-page="costsetup">Shipping and payment rates</button>.':'No payment companies are set up yet. Ask an administrator to add them on Shipping and payment rates.'}</p>`}
+      <div class="row" style="margin-top:12px;gap:8px"><label class="btn ghost sm" style="flex-direction:row;cursor:pointer">Import from Excel<input type="file" accept=".xlsx,.xls,.csv" data-chg="dcImpPay" class="sr-only"></label><button class="link small" data-act="dcTplPay">Download template</button></div><div id="dcImpMsg"></div></div>`:''}
+    ${Object.keys(by).length?`<div class="panel"><h2 style="margin-bottom:8px">By company and method</h2>${table([{l:'Company · method'},{l:'Sales',num:1},{l:'Shipping paid',num:1},{l:'Orders',num:1},{l:'Fees',num:1},{l:'Fee % of amount',num:1}],Object.entries(by).sort((a,b)=>b[1].fee-a[1].fee).map(([k,r])=>[k,{h:money(r.sales)},{h:money(r.ship)},num(r.orders),{h:money(r.fee)},{h:r.sales+r.ship?(100*r.fee/(r.sales+r.ship)).toFixed(2)+'%':'–'}]))}</div>`:''}
+    ${L.length?table([{l:'Date'},...(isAll()?[{l:'Project'}]:[]),{l:'Company'},{l:'Method'},{l:'Sales',num:1},{l:'Shipping paid',num:1},{l:'Orders',num:1},{l:'Rate'},{l:'Fees',num:1},{l:'Entered by'},{l:''}],
+      [...L.map(x=>[fmtD(x.date),...(isAll()?[projCode(x.projectId)]:[]),x.co,x.method,{h:money(x.sales)},{h:money(x.ship)},num(x.orders),`${x.pct}% + ${money(x.fixed)}`,{h:money(x.fee)},x.by||'',H(delBtn('pay',x))]),
+       [H('<strong>Total</strong>'),...(isAll()?['']:[]),'','',{h:`<strong>${money(sum.paySales)}</strong>`},{h:`<strong>${money(L.reduce((a,x)=>a+x.ship,0))}</strong>`},{h:`<strong>${num(sum.payOrders)}</strong>`},'',{h:`<strong>${money(sum.fees)}</strong>`},'','']]):'<div class="panel empty">No payment days in this period.</div>'}`;
+  }
+  return dcHead(u,sum,tabs,tab,from,to)+body;
+}
+function pgCostSetup(u){
+    const can=allowedPages(u).includes('costsetup');const sc=state.shipCos||[],pc=state.payCos||[];
+    return ph('costsetup','Shipping companies with their cost %, and payment companies with each method\'s fee % and extra amount per order. Used on Daily costs.')+`<div class="cols2"><div class="panel"><h2>Shipping companies</h2><p class="muted small" style="margin-bottom:8px">The cost % is filled in when you add a day; you can change it per day.</p>
+      <ul class="ls">${sc.map(c=>ui.dcEdit==='s|'+c.id?`<li><form data-form="dcShipCoSave" data-id="${esc(c.id)}" class="row" style="gap:6px;flex:1"><input name="name" value="${esc(c.name)}" required style="flex:1"><input name="pct" type="number" min="0" step="0.01" value="${c.pct}" style="width:90px" aria-label="Cost %"><span class="small">%</span><button class="btn sm">Save</button><button type="button" class="btn plain sm" data-act="dcEdit" data-k="">Cancel</button></form></li>`
+        :`<li><span style="flex:1">${esc(c.name)}</span><span class="small muted">${c.pct}% cost</span>${can?`<button class="btn plain sm" data-act="dcEdit" data-k="s|${esc(c.id)}">Edit</button><button class="btn plain sm" data-act="dcCoDel" data-kind="ship" data-id="${esc(c.id)}">Delete</button>`:''}</li>`).join('')||'<li class="muted small">None yet.</li>'}</ul>
+      ${can?`<form data-form="dcShipCoSave" class="row" style="gap:6px;margin-top:8px"><input name="name" placeholder="Shipping company" required style="flex:1"><input name="pct" type="number" min="0" step="0.01" placeholder="Cost %" style="width:100px" aria-label="Cost %"><button class="btn sm">Add</button></form>`:''}</div>
+      <div class="panel"><h2>Payment companies and methods</h2><p class="muted small" style="margin-bottom:8px">Each method has its own fee %, and an extra amount charged on every order.</p>
+      ${pc.map(c=>`<div class="dc-pc"><div class="row" style="gap:8px;margin-bottom:6px">${ui.dcEdit==='c|'+c.id?`<form data-form="dcPayCoSave" data-id="${esc(c.id)}" class="row" style="gap:6px;flex:1"><input name="name" value="${esc(c.name)}" required style="flex:1"><button class="btn sm">Save</button><button type="button" class="btn plain sm" data-act="dcEdit" data-k="">Cancel</button></form>`:`<strong style="flex:1">${esc(c.name)}</strong>${can?`<button class="btn plain sm" data-act="dcEdit" data-k="c|${esc(c.id)}">Rename</button><button class="btn plain sm" data-act="dcCoDel" data-kind="pay" data-id="${esc(c.id)}">Delete</button>`:''}`}</div>
+        <ul class="ls">${c.methods.map(m=>ui.dcEdit==='m|'+m.id?`<li><form data-form="dcMethSave" data-co="${esc(c.id)}" data-id="${esc(m.id)}" class="row" style="gap:6px;flex:1;flex-wrap:wrap"><input name="name" value="${esc(m.name)}" required style="flex:1;min-width:90px"><input name="pct" type="number" min="0" step="0.01" value="${m.pct}" style="width:80px" aria-label="Fee %"><span class="small">% +</span><input name="fixed" type="number" min="0" step="0.01" value="${m.fixed}" style="width:90px" aria-label="Extra per order"><button class="btn sm">Save</button><button type="button" class="btn plain sm" data-act="dcEdit" data-k="">Cancel</button></form></li>`
+          :`<li><span style="flex:1">${esc(m.name)}</span><span class="small muted">${m.pct}% + ${money(m.fixed)} per order</span>${can?`<button class="btn plain sm" data-act="dcEdit" data-k="m|${esc(m.id)}">Edit</button><button class="btn plain sm" data-act="dcMethDel" data-co="${esc(c.id)}" data-id="${esc(m.id)}">Delete</button>`:''}</li>`).join('')||'<li class="muted small">No methods yet.</li>'}</ul>
+        ${can?`<form data-form="dcMethSave" data-co="${esc(c.id)}" class="row" style="gap:6px;margin:6px 0 14px;flex-wrap:wrap"><input name="name" placeholder="Method (Visa, Ref, Extra…)" required style="flex:1;min-width:120px"><input name="pct" type="number" min="0" step="0.01" placeholder="Fee %" style="width:80px" aria-label="Fee %"><input name="fixed" type="number" min="0" step="0.01" placeholder="Extra per order" style="width:120px" aria-label="Extra per order"><button class="btn sm">Add method</button></form>`:''}</div>`).join('')||'<p class="muted small">None yet.</p>'}
+      ${can?`<form data-form="dcPayCoSave" class="row" style="gap:6px;margin-top:8px"><input name="name" placeholder="Payment company" required style="flex:1"><button class="btn sm">Add company</button></form>`:''}</div></div>
+      <p class="small muted">Changing a rate only affects days entered after the change. Days already entered keep the rate they were calculated with.</p>`;
+}
+function dcHead(u,sum,tabs,tab,from,to){
+  const kp=(l,v,sub,warn)=>`<div class="kpi"><span class="kl">${l}</span><b class="${warn?'neg':''}">${v}</b><span class="ks">${sub}</span></div>`;
+  return ph('dailycosts','Shipping and payment costs entered as totals per day. They feed the net profit on the Profit overview.')+`
+  <div class="kpis" style="margin-bottom:12px">${kp('Total shipping',money(sum.shipTotal),num(sum.shipN)+' line'+(sum.shipN===1?'':'s'))}${kp('Shipping cost',money(sum.shipCost),sum.shipTotal?(100*sum.shipCost/sum.shipTotal).toFixed(1)+'% of total shipping':'–')}${kp('Shipping profit',money(sum.shipProfit),'Total − cost',sum.shipProfit<0)}${kp('Payment fees',money(sum.fees),num(sum.payOrders)+' orders, '+num(sum.payN)+' line'+(sum.payN===1?'':'s'))}</div>
+  <div class="panel"><div class="spread"><div class="tabs" role="tablist" style="margin:0;border:0">${tabs.map(([k,l])=>`<button class="tab ${tab===k?'on':''}" role="tab" aria-selected="${tab===k}" data-act="dcTab" data-k="${k}">${l}</button>`).join('')}</div>
+    ${true?`<div class="row"><label style="flex-direction:row;align-items:center;gap:6px">From<input type="date" data-chg="dcD" data-k="dcFrom" value="${from}"></label><label style="flex-direction:row;align-items:center;gap:6px">To<input type="date" data-chg="dcD" data-k="dcTo" value="${to}"></label><button class="btn ghost sm" data-act="dcExport">Export to Excel</button></div>`:''}</div></div>`;
+}
+function dcPreview(f){const box=f.querySelector('.dc-prev');if(!box)return;
+  if(f.dataset.form==='dcShip'){const t=Number(f.elements.total.value)||0,pc=Number(f.elements.pct.value)||0;box.innerHTML=t?`Cost <strong>${money(t*pc/100)}</strong> · profit <strong>${money(t-t*pc/100)}</strong>`:''}
+  else{const o=f.elements.method.selectedOptions[0];if(!o||!o.value){box.innerHTML='';return}const fee=payFee(f.elements.sales.value,f.elements.ship.value,f.elements.orders.value,o.dataset.pct,o.dataset.fixed);box.innerHTML=`Fees <strong>${money(fee)}</strong>`}}
+function dcImport(el,kind){const file=el.files&&el.files[0];if(!file)return;const msg=document.getElementById('dcImpMsg');
+  if(!window.XLSX){toast('The Excel reader did not load. Check your internet connection and reload the page.','bad');el.value='';return}
+  const rd=new FileReader();rd.onload=()=>{el.value='';let rows;try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array',cellDates:true});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}catch(e){msg.innerHTML=`<p class="err">Could not read this file: ${esc(e.message||e)}</p>`;return}
+    const hdr=(rows[0]||[]).map(h=>String(h||'').trim().toLowerCase());const col=re=>hdr.findIndex(h=>re.test(h));
+    const di=col(/^date/),pji=col(/project/),bad=[],ok=[];const n=v=>{const x=String(v??'').replace(/[^0-9.\-]/g,'');return x===''?null:Number(x)};
+    const projOf=(r,i)=>{if(!isAll())return ui.project;const c=String(r[pji]??'').trim().toLowerCase();const p=myProjIds().find(id=>projCode(id).toLowerCase()===c||nm(state.projects,id).toLowerCase()===c);if(!p)bad.push(`Line ${i+2}: project "${esc(c||'(empty)')}" not found`);return p};
+    if(kind==='ship'){const ci=col(/shipping comp|courier|^company/),ti=col(/total/),pi=col(/%|percent|cost/);
+      if(di<0||ci<0||ti<0){msg.innerHTML='<p class="err">The file needs Date, Shipping company and Total shipping columns. Download the template to see the format.</p>';return}
+      rows.slice(1).forEach((r,i)=>{if(!r||r.every(c=>String(c??'').trim()===''))return;const d=parseDay(r[di]);if(!d){bad.push(`Line ${i+2}: date not understood`);return}
+        const co=(state.shipCos||[]).find(c=>c.name.toLowerCase()===String(r[ci]??'').trim().toLowerCase());if(!co){bad.push(`Line ${i+2}: shipping company "${esc(String(r[ci]??''))}" is not in the list`);return}
+        const tot=n(r[ti]);if(!(tot>=0)){bad.push(`Line ${i+2}: total shipping is not a number`);return}const pc=pi>=0&&n(r[pi])!==null?n(r[pi]):co.pct;const pj=projOf(r,i);if(!pj)return;
+        ok.push({date:d,projectId:pj,coId:co.id,co:co.name,total:tot,pct:pc,cost:tot*pc/100})})}
+    else{const ci=col(/payment comp|^company|provider/),mi=col(/method|type/),si=col(/sales/),shi=col(/ship/),oi=col(/order/);
+      if(di<0||ci<0||mi<0||si<0||oi<0){msg.innerHTML='<p class="err">The file needs Date, Payment company, Method, Total sales and Number of orders columns. Download the template to see the format.</p>';return}
+      rows.slice(1).forEach((r,i)=>{if(!r||r.every(c=>String(c??'').trim()===''))return;const d=parseDay(r[di]);if(!d){bad.push(`Line ${i+2}: date not understood`);return}
+        const co=(state.payCos||[]).find(c=>c.name.toLowerCase()===String(r[ci]??'').trim().toLowerCase());if(!co){bad.push(`Line ${i+2}: payment company "${esc(String(r[ci]??''))}" is not in the list`);return}
+        const m=co.methods.find(x=>x.name.toLowerCase()===String(r[mi]??'').trim().toLowerCase());if(!m){bad.push(`Line ${i+2}: method "${esc(String(r[mi]??''))}" is not set up for ${esc(co.name)}`);return}
+        const sa=n(r[si]),sh=shi>=0?(n(r[shi])||0):0,od=n(r[oi]);if(!(sa>=0)||!(od>=0)){bad.push(`Line ${i+2}: sales or orders is not a number`);return}const pj=projOf(r,i);if(!pj)return;
+        ok.push({date:d,projectId:pj,coId:co.id,co:co.name,methodId:m.id,method:m.name,sales:sa,ship:sh,orders:Math.round(od),pct:m.pct,fixed:m.fixed,fee:payFee(sa,sh,od,m.pct,m.fixed)})})}
+    if(ok.length)act(s=>{const k=kind==='ship'?'shipDays':'payDays';s[k]=s[k]||[];ok.forEach(x=>s[k].push({id:rid(kind==='ship'?'shd':'pyd'),...x,by:cur(),at:now()}));log(s,kind==='ship'?'Shipping days imported':'Payment days imported',null,ok.length+' line(s) from '+file.name,'')},ok.length+' line'+(ok.length===1?'':'s')+' imported.');
+    const m2=document.getElementById('dcImpMsg');if(m2)m2.innerHTML=`<div class="note" style="margin-top:6px"><strong>${ok.length} line${ok.length===1?'':'s'} imported.</strong>${bad.length?`<br>${bad.length} skipped:<br>${bad.slice(0,15).join('<br>')}${bad.length>15?'<br>…':''}`:''}</div>`};rd.readAsArrayBuffer(file)}
 function pgSales(u){
   if(!ui.project)return ph('sales')+needProject();
   const S=P(state.sales).slice().reverse();
@@ -2375,9 +2482,22 @@ function pgFinance(u){
       ${tile('GP margin',pct(a.gpm),'Gross profit ÷ revenue',a.gpm!==null&&b.gpm!==null?ovDelta(a.gpm,b.gpm,'pts',true):'',a.gpm!==null&&a.gpm<10)}
       ${tile('Waiting for COGS',money(a.missRev),`Revenue not in gross profit yet. ${pend.length} receipt line${pend.length===1?' needs':'s need'} a cost.`,'',a.missRev>0||pend.length>0)}
     </div>
+    ${(()=>{const dc=dcSum(pr.from,pr.to),dp=dcSum(pr.pFrom,pr.pTo);const net=a.gp+dc.shipProfit-dc.fees,pnet=b.gp+dp.shipProfit-dp.fees;const nm2=a.revC?100*net/a.revC:null,pnm=b.revC?100*pnet/b.revC:null;
+      return `<h3 style="margin:16px 0 8px">After shipping and payment fees</h3><div class="kpis">
+      ${tile('Shipping profit',money(dc.shipProfit),dc.shipN?`${money(dc.shipTotal)} shipping − ${money(dc.shipCost)} cost`:'No shipping days entered',d(dc.shipProfit,dp.shipProfit,'pct',true),dc.shipProfit<0)}
+      ${tile('Payment fees',money(dc.fees),dc.payN?`${num(dc.payOrders)} orders`:'No payment days entered',d(dc.fees,dp.fees,'pct',false))}
+      ${tile('Net profit',money(net),'Gross profit + shipping profit − payment fees',d(net,pnet,'pct',true),net<0)}
+      ${tile('Net margin',nm2===null?'–':nm2.toFixed(1)+'%','Net profit ÷ revenue',nm2!==null&&pnm!==null?ovDelta(nm2,pnm,'pts',true):'',nm2!==null&&nm2<0)}
+      </div>${pfActive()?'<p class="small muted" style="margin-top:6px">Shipping and payment costs are day totals, so they are not reduced by the product filters.</p>':''}`})()}
     ${a.retNoPrice?`<p class="small" style="margin-top:10px;color:var(--bad)"><strong>${a.retNoPrice} return${a.retNoPrice===1?' has':'s have'} no price.</strong> ${a.retNoPrice===1?'Its':'Their'} cost is taken off COGS but nothing is taken off revenue, so gross profit looks higher than it is. Set the prices with <strong>Edit prices</strong> on the return in Sales.</p>`:''}
     ${a.missRev||pend.length?`<p class="small" style="margin-top:10px;color:var(--warn)">Gross profit counts only sales whose batch has a cost. ${allowedPages(u).includes('cogs')?'<button class="link small" data-act="nav" data-page="cogs">Enter the missing COGS</button>':'Ask a user with COGS access to enter the missing costs.'}</p>`:''}
   </div>
+  ${(()=>{const dc=dcSum(pr.from,pr.to);const days=daysBetween(pr.from,pr.to)+1;if(days>62)return '';const rows=[];let tt={rev:0,cogs:0,gp:0,sp:0,fee:0,net:0};
+    for(let i=0;i<days;i++){const dd=addDays(pr.from,i);const Ld=L.filter(z=>z.d===dd);const f=finSum(Ld);const c=dc.byDay[dd]||{shipTotal:0,shipCost:0,fees:0};const sp=c.shipTotal-c.shipCost;const net=f.gp+sp-c.fees;
+      if(!Ld.length&&!dc.byDay[dd])continue;tt.rev+=f.rev;tt.cogs+=f.cogs;tt.gp+=f.gp;tt.sp+=sp;tt.fee+=c.fees;tt.net+=net;
+      rows.push([fmtD(dd),{h:money(f.rev)},{h:money(f.cogs)},{h:money(f.gp)},{h:money(sp)},{h:money(c.fees)},{h:`<span class="${net<0?'neg':''}">${money(net)}</span>`},{h:f.revC?(100*net/f.revC).toFixed(1)+'%':'–'}])}
+    if(!rows.length)return '';rows.reverse();rows.push([H('<strong>Total</strong>'),{h:`<strong>${money(tt.rev)}</strong>`},{h:`<strong>${money(tt.cogs)}</strong>`},{h:`<strong>${money(tt.gp)}</strong>`},{h:`<strong>${money(tt.sp)}</strong>`},{h:`<strong>${money(tt.fee)}</strong>`},{h:`<strong>${money(tt.net)}</strong>`},'']);
+    return `<div class="panel"><h2 style="margin-bottom:8px">Daily P&amp;L</h2>${table([{l:'Day'},{l:'Revenue',num:1},{l:'COGS',num:1},{l:'Gross profit',num:1},{l:'Shipping profit',num:1},{l:'Payment fees',num:1},{l:'Net profit',num:1},{l:'Net margin',num:1}],rows)}</div>`})()}
   ${invValuePanel()}
   <div class="panel"><div class="spread"><h2>Revenue and COGS ${T.byMonth?'by month':'by day'}</h2><div class="row small"><span class="lg"><i class="b-rev"></i>Revenue</span><span class="lg"><i class="b-cogs"></i>COGS</span><span class="lg"><i class="l-gp"></i>Gross profit</span></div></div>
     ${a.rev?`<div class="trend-w">${trendSvg(T)}</div>`:'<p class="muted small">No sales in this period.</p>'}</div>
@@ -3087,6 +3207,22 @@ const forms={
   retPrice(fd,f){act(s=>{const x=find(s.sales,f.dataset.id);if(!x||!x.ret)throw new Error('Return not found.');const ch=[];
     x.lines.forEach((l,i)=>{const v=fd.get('rp_'+i);if(v===null)return;const n=Number(v);if(!(n>=0))throw new Error('Enter a valid price.');if(n!==Number(l.price)){ch.push(nm(s.products,l.productId)+': '+money(l.price)+' to '+money(n));l.price=n;l.amount=l.qty*n}});
     if(!ch.length)throw new Error('No price changed.');x.total=x.lines.reduce((a,l)=>a+l.amount,0);log(s,'Return prices changed',x.ref,x.id+'. '+ch.join('; '),'',null,x.projectId);closeModal()},'Return prices saved.')},
+  dcShip(fd,f){act(s=>{const co=(s.shipCos||[]).find(c=>c.id===fd.get('co'));if(!co)throw new Error('Choose a shipping company.');const d=fd.get('date');if(!d)throw new Error('Choose a date.');
+    const pj=isAll()?fd.get('projectId'):ui.project;if(!pj)throw new Error('Choose a project.');const tot=Number(fd.get('total')),pc=Number(fd.get('pct'));if(!(tot>=0))throw new Error('Enter the total shipping.');if(!(pc>=0))throw new Error('Enter the cost %.');
+    s.shipDays=s.shipDays||[];s.shipDays.push({id:rid('shd'),date:d,projectId:pj,coId:co.id,co:co.name,total:tot,pct:pc,cost:tot*pc/100,note:String(fd.get('note')||'').trim(),by:cur(),at:now()});log(s,'Shipping day added',null,fmtD(d)+', '+co.name+': '+money(tot)+' at '+pc+'% cost','',null,pj)},'Shipping day added.')},
+  dcPay(fd,f){act(s=>{const [cid,mid]=String(fd.get('method')||'').split('|');const co=(s.payCos||[]).find(c=>c.id===cid);const m=co&&co.methods.find(x=>x.id===mid);if(!m)throw new Error('Choose a payment company and method.');
+    const d=fd.get('date');if(!d)throw new Error('Choose a date.');const pj=isAll()?fd.get('projectId'):ui.project;if(!pj)throw new Error('Choose a project.');
+    const sa=Number(fd.get('sales')),sh=Number(fd.get('ship')||0),od=Number(fd.get('orders'));if(!(sa>=0))throw new Error('Enter the total sales.');if(!(od>=0)||Math.round(od)!==od)throw new Error('Enter the number of orders.');
+    const fee=payFee(sa,sh,od,m.pct,m.fixed);s.payDays=s.payDays||[];s.payDays.push({id:rid('pyd'),date:d,projectId:pj,coId:co.id,co:co.name,methodId:m.id,method:m.name,sales:sa,ship:sh,orders:od,pct:m.pct,fixed:m.fixed,fee,by:cur(),at:now()});
+    log(s,'Payment day added',null,fmtD(d)+', '+co.name+' '+m.name+': fees '+money(fee),'',null,pj)},'Payment day added.')},
+  dcShipCoSave(fd,f){act(s=>{const name=String(fd.get('name')||'').trim();const pc=fd.get('pct')===''||fd.get('pct')===null?0:Number(fd.get('pct'));if(!name)throw new Error('Enter a name.');if(!(pc>=0))throw new Error('Enter a valid cost %.');s.shipCos=s.shipCos||[];
+    if(s.shipCos.some(c=>c.name.toLowerCase()===name.toLowerCase()&&c.id!==f.dataset.id))throw new Error('"'+name+'" is already in the list.');
+    if(f.dataset.id){const c=s.shipCos.find(x=>x.id===f.dataset.id);c.name=name;c.pct=pc}else s.shipCos.push({id:rid('shc'),name,pct:pc});ui.dcEdit='';log(s,'Shipping company saved',null,name+', '+pc+'% cost','')},'Saved.')},
+  dcPayCoSave(fd,f){act(s=>{const name=String(fd.get('name')||'').trim();if(!name)throw new Error('Enter a name.');s.payCos=s.payCos||[];if(s.payCos.some(c=>c.name.toLowerCase()===name.toLowerCase()&&c.id!==f.dataset.id))throw new Error('"'+name+'" is already in the list.');
+    if(f.dataset.id){s.payCos.find(x=>x.id===f.dataset.id).name=name}else s.payCos.push({id:rid('pyc'),name,methods:[]});ui.dcEdit='';log(s,'Payment company saved',null,name,'')},'Saved.')},
+  dcMethSave(fd,f){act(s=>{const c=(s.payCos||[]).find(x=>x.id===f.dataset.co);if(!c)throw new Error('Company not found.');const name=String(fd.get('name')||'').trim();const pc=Number(fd.get('pct')||0),fx=Number(fd.get('fixed')||0);
+    if(!name)throw new Error('Enter the method name.');if(!(pc>=0)||!(fx>=0))throw new Error('Enter a valid fee % and extra amount.');if(c.methods.some(m=>m.name.toLowerCase()===name.toLowerCase()&&m.id!==f.dataset.id))throw new Error('"'+name+'" already exists for '+c.name+'.');
+    if(f.dataset.id){const m=c.methods.find(x=>x.id===f.dataset.id);Object.assign(m,{name,pct:pc,fixed:fx})}else c.methods.push({id:rid('pym'),name,pct:pc,fixed:fx});ui.dcEdit='';log(s,'Payment method saved',null,c.name+' '+name+': '+pc+'% + '+money(fx)+' per order','')},'Saved.')},
   cogsSave(fd,f){act(s=>{let n=0;const det=[];
     for(const [k,v] of fd.entries()){if(!k.startsWith('mc_'))continue;const m=s.movements.find(x=>x.id===k.slice(3));if(!m||!isCostLayer(m))continue;
       const nv=String(v).trim()===''?null:Number(v);if(nv!==null&&!(nv>=0))throw new Error('Enter a valid cost for '+nm(s.products,m.productId)+', batch '+batchNo(s,m.batchId)+'.');
@@ -3382,6 +3518,8 @@ const acts={
       ['Revenue',a.rev],['COGS',a.cogs],['Gross profit',a.gp],['GP margin %',a.gpm===null?'':Number(a.gpm.toFixed(2))],['Revenue waiting for COGS',a.missRev],['Inventory value at COGS',iv.value],['Units on hand without cost',iv.unc]];
     const sheets=[['Summary',sum]];
     FIN_DIMS.filter(x=>x[0]!=='project'||isAll()).forEach(([k,l])=>{const G=finGroup(L,k).sort((x,y)=>y.rev-x.rev);sheets.push(['By '+l.toLowerCase(),[[l,'Units','Revenue','COGS','Gross profit','GP margin %'],...G.map(g=>[g.label,g.q,g.rev,g.cogs,g.gp,g.gpm===null?'':Number(g.gpm.toFixed(2))])]])});
+    {const dc=dcSum(pr.from,pr.to);const net=a.gp+dc.shipProfit-dc.fees;sum.push([],['Total shipping',dc.shipTotal],['Shipping cost',dc.shipCost],['Shipping profit',dc.shipProfit],['Payment fees',dc.fees],['Net profit',net],['Net margin %',a.revC?Number((100*net/a.revC).toFixed(2)):'']);
+     const dl=[['Day','Revenue','COGS','Gross profit','Shipping profit','Payment fees','Net profit']];const days=daysBetween(pr.from,pr.to)+1;for(let i=0;i<days&&i<400;i++){const dd=addDays(pr.from,i);const f=finSum(L.filter(z=>z.d===dd));const c=dc.byDay[dd]||{shipTotal:0,shipCost:0,fees:0};if(!f.rev&&!dc.byDay[dd])continue;const sp=c.shipTotal-c.shipCost;dl.push([dd,f.rev,f.cogs,f.gp,sp,c.fees,f.gp+sp-c.fees])}sheets.push(['Daily P&L',dl])}
     sheets.push(['Sale lines',[['Date','Sale','Reference','Channel','Customer','Product ID','Product','Category','Company','Batch','Sold from','Qty','Unit price','Revenue','Unit COGS','COGS','Gross profit'],...L.map(z=>{const c=find(state.customers,z.x.customerId);const lc=saleLoc(z.x,z.l);return [z.d,z.x.id,z.x.ref,saleCh(z.x),c?custLabel(c):'',z.p.code||'',z.p.name||'',z.p.category||'',z.p.company||'',batchNo(state,z.l.batchId)||'',lc?locName(state,lc):'',z.q,Number(z.l.price)||0,z.rev,z.uc===null?'':Number(z.uc.toFixed(4)),z.cogs===null?'':z.cogs,z.cogs===null?'':z.rev-z.cogs]})]]);
     const base='daf-profit-'+pr.from+'-to-'+pr.to;
     if(window.XLSX){const wb=XLSX.utils.book_new();sheets.forEach(([n,rows])=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=rows[0]&&rows[0].length>2?rows[0].map((h,i)=>({wch:i===0?28:14})):[{wch:28},{wch:20}];XLSX.utils.book_append_sheet(wb,ws,n.slice(0,31))});await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
@@ -3406,6 +3544,18 @@ const acts={
       await saveFile(base+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
     else{const q=v=>{const x=String(v??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};await saveFile(base+'.csv','\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n'))}
   },
+  dcTab(el){ui.dcTab=el.dataset.k;render()},
+  dcEdit(el){ui.dcEdit=el.dataset.k;render()},
+  dcDel(el){const k=el.dataset.kind==='ship'?'shipDays':'payDays';act(s=>{const x=(s[k]||[]).find(y=>y.id===el.dataset.id);if(!x)throw new Error('Not found.');if(!(me().role==='admin'||x.by===cur()))throw new Error('Only the person who entered it or an administrator can delete it.');s[k]=s[k].filter(y=>y.id!==x.id);log(s,(k==='shipDays'?'Shipping':'Payment')+' day deleted',null,fmtD(x.date)+', '+x.co+(x.method?' '+x.method:''),'',null,x.projectId)},'Deleted.')},
+  dcCoDel(el){act(s=>{if(el.dataset.kind==='ship'){const c=(s.shipCos||[]).find(x=>x.id===el.dataset.id);if((s.shipDays||[]).some(x=>x.coId===c.id))throw new Error(c.name+' has shipping days. It can only be deleted when it has none.');s.shipCos=s.shipCos.filter(x=>x.id!==c.id);log(s,'Shipping company deleted',null,c.name,'')}
+    else{const c=(s.payCos||[]).find(x=>x.id===el.dataset.id);if((s.payDays||[]).some(x=>x.coId===c.id))throw new Error(c.name+' has payment days. It can only be deleted when it has none.');s.payCos=s.payCos.filter(x=>x.id!==c.id);log(s,'Payment company deleted',null,c.name,'')}},'Deleted.')},
+  dcMethDel(el){act(s=>{const c=(s.payCos||[]).find(x=>x.id===el.dataset.co);const m=c&&c.methods.find(x=>x.id===el.dataset.id);if(!m)throw new Error('Not found.');if((s.payDays||[]).some(x=>x.methodId===m.id))throw new Error(m.name+' has payment days. It can only be deleted when it has none.');c.methods=c.methods.filter(x=>x.id!==m.id);log(s,'Payment method deleted',null,c.name+' '+m.name,'')},'Deleted.')},
+  async dcTplShip(){const rows=[['Date','Shipping company','Total shipping','Cost %',...(isAll()?['Project']:[])],[today(),(state.shipCos[0]||{name:'BOSTA'}).name,10000,65,...(isAll()?[projCode(myProjIds()[0])]:[])]];if(!window.XLSX)return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:20},{wch:16},{wch:10},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Shipping');await saveFile('daf-shipping-days-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
+  async dcTplPay(){const c=(state.payCos||[])[0]||{name:'Paymob',methods:[{name:'Visa'}]};const rows=[['Date','Payment company','Method','Total sales','Shipping paid','Number of orders',...(isAll()?['Project']:[])],[today(),c.name,(c.methods[0]||{name:'Visa'}).name,40000,2000,50,...(isAll()?[projCode(myProjIds()[0])]:[])]];if(!window.XLSX)return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:18},{wch:12},{wch:14},{wch:14},{wch:16},{wch:12}];XLSX.utils.book_append_sheet(wb,ws,'Payments');await saveFile('daf-payment-days-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
+  async dcExport(){const t0=today();const from=ui.dcFrom||t0.slice(0,8)+'01',to=ui.dcTo||t0;const pids=finPids();const inR=x=>x.date>=from&&x.date<=to&&pids.includes(x.projectId);
+    const sh=[['Date','Project','Shipping company','Total shipping','Cost %','Cost','Shipping profit','Note','Entered by'],...(state.shipDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.total,x.pct,x.cost,x.total-x.cost,x.note||'',x.by||''])];
+    const py=[['Date','Project','Payment company','Method','Total sales','Shipping paid','Number of orders','Fee %','Extra per order','Fees','Entered by'],...(state.payDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.method,x.sales,x.ship,x.orders,x.pct,x.fixed,x.fee,x.by||''])];
+    if(!window.XLSX)return;const wb=XLSX.utils.book_new();[['Shipping',sh],['Payments',py]].forEach(([n,r])=>{const ws=XLSX.utils.aoa_to_sheet(r);ws['!cols']=r[0].map(()=>({wch:16}));XLSX.utils.book_append_sheet(wb,ws,n)});await saveFile('daf-daily-costs-'+from+'-to-'+to+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
   rmDay(el){ui.rmDay=el.dataset.k;render()},
   rmToggle(el){ui.rmOpen=ui.rmOpen||{};ui.rmOpen[el.dataset.id]=!ui.rmOpen[el.dataset.id];render()},
   stopOpen(el){openStop(el.dataset.id)},
@@ -3557,6 +3707,11 @@ const changes={
   fnSort(el){ui.fnSort=el.value;render()},
   cogsTiming(el){const f=el.form;const box=f.querySelector('.cogs-val');if(!box)return;const aft=el.value==='after';box.classList.toggle('hide',aft);const i=box.querySelector('input');i.disabled=aft;if(aft)i.value=''},
   slD(el){ui[el.dataset.k]=el.value;render()},
+  dcD(el){ui[el.dataset.k]=el.value;render()},
+  dcImpShip(el){dcImport(el,'ship')},
+  dcImpPay(el){dcImport(el,'pay')},
+  dcShipCo(el){const c=(state.shipCos||[]).find(x=>x.id===el.value);if(c)el.form.elements.pct.value=c.pct;dcPreview(el.form)},
+  dcPayM(el){dcPreview(el.form)},
   rcD(el){ui[el.dataset.k]=el.value;render()},
   rcOpen(el){ui.rcOpen=el.checked;render()},
   pf(el){pfGet()[el.dataset.k]=el.value;render()},
@@ -3633,7 +3788,7 @@ document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.datase
     sel.value=p?p.id:'';sel.dataset.fromCode='1';changes.lineProduct(sel);delete sel.dataset.fromCode;
     h.className='ophint small';if(p){h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}else{h.style.color=el.value.trim()?'var(--bad)':'';h.textContent=el.value.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='pcode'){const line=el.closest('.line');const sel=line.querySelector('select[name=item_product]');const h=line.querySelector('.phint');const p=prodByCode(el.value);
     if(p){if(sel.value!==p.id){sel.value=p.id;const keep=el.value;changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color='var(--ok)';h.textContent=p.sku+', '+p.name}
-    else{const keep=el.value;if(sel.value){sel.value='';changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color=keep.trim()?'var(--bad)':'';h.textContent=keep.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='costEdit'){el.dataset.auto='';return}if(el.dataset&&el.dataset.inp==='cogsCalc'){const td=el.closest('tr')&&el.closest('tr').querySelector('.cg-tot');if(td)td.textContent=el.value===''?'–':money((Number(el.value)||0)*Number(el.dataset.q));return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
+    else{const keep=el.value;if(sel.value){sel.value='';changes.lineProduct(sel);el.value=keep}h.className='phint small';h.style.color=keep.trim()?'var(--bad)':'';h.textContent=keep.trim()?'No product with this ID':''}return}if(el.dataset&&el.dataset.inp==='soCalc'){soTotal();return}if(el.dataset&&el.dataset.inp==='dcCalc'){dcPreview(el.form);return}if(el.dataset&&el.dataset.inp==='costEdit'){el.dataset.auto='';return}if(el.dataset&&el.dataset.inp==='cogsCalc'){const td=el.closest('tr')&&el.closest('tr').querySelector('.cg-tot');if(td)td.textContent=el.value===''?'–':money((Number(el.value)||0)*Number(el.dataset.q));return}if(el.dataset&&el.dataset.inp==='soCust'){const c=custByCode(el.value);const f=el.form;if(c){f.elements.customerId.value=c.id;if(c.govId)f.elements.govId.value=c.govId;document.getElementById('soCard').innerHTML=custCard(c)}else{f.elements.customerId.value='';const isNew=!document.getElementById('soNew').classList.contains('hide');document.getElementById('soCard').innerHTML=(el.value.trim()&&!isNew)?`<div class="row"><span class="err">No customer with ID ${esc(el.value.trim())}.</span><button type="button" class="btn ghost sm" data-act="soNewOpen">Add as new customer</button></div>`:''}return}
   if(el.dataset&&el.dataset.inp==='soCust')return;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(!el)return;const h=changes[el.dataset.chg];if(h)h(el)});
 document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending&&!ui.dirty){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
