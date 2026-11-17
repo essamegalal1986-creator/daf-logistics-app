@@ -365,6 +365,10 @@ tr.cg-need td{background:var(--warn-soft)}
 .ptag.ret{background:var(--bad-soft);color:var(--bad);border-color:transparent}
 .dc-pc+.dc-pc{border-top:1px solid var(--line);padding-top:10px}
 .cap-tag{color:var(--warn);font-weight:700}
+tr.short td{background:var(--bad-soft)}tr.short td:first-child{box-shadow:inset 4px 0 0 var(--bad)}
+.short-msg{margin-top:4px;font-size:12px;font-weight:700;color:var(--bad);display:flex;gap:6px;align-items:center}.short-msg i{font-style:normal;width:16px;height:16px;border-radius:50%;background:var(--bad);color:#fff;display:grid;place-items:center;font-size:11px}
+.short-it{color:var(--bad);font-weight:700;background:var(--bad-soft);border-radius:4px;padding:0 4px}
+.short-ban{background:var(--bad-soft);color:var(--bad);border-left:4px solid var(--bad);padding:8px 12px;margin:8px 0;font-size:13px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .kpi,.stat,.rsum-i,.xbox{min-width:0;overflow:hidden}
 .kpi>b,.stat>b,.rsum-i>b,.xbox>b{display:block;white-space:nowrap;overflow:hidden;max-width:100%}
@@ -747,6 +751,13 @@ function stockShort(s,r){
   const out=[];for(const k in need){const [loc,pid,bid]=k.split('|');const have=loc==='*'?batchAvail(s,bid):qty(s,loc,pid,bid);if(have<need[k])out.push({loc:loc==='*'?'':loc,pid,bid,have,need:need[k]})}
   return out;
 }
+/* Which lines of a request are short of stock, keyed by line index */
+function shortLines(r){const sh=stockShort(state,r);const m={};if(!sh.length)return m;
+  r.items.forEach((it,i)=>{const loc=itemLoc(it)||'';const x=sh.find(z=>z.pid===it.productId&&(z.bid||'')===(it.batchId||'')&&(z.loc||'')===loc);if(x)m[i]=x});return m}
+function shortMsg(x,p){return `<div class="short-msg"><i aria-hidden="true">!</i> Short: ${num(x.have)} available${x.loc?' at '+esc(locName(state,x.loc)):' in all locations'}, needs ${num(x.need)}${p&&p.unit?' '+esc(p.unit):''}</div>`}
+function shortBanner(r){const sh=stockShort(state,r);if(!sh.length)return '';const n=new Set(sh.map(x=>x.pid+'|'+x.bid)).size;
+  return `<div class="short-ban" role="status"><strong>Waiting for stock:</strong> ${n} product line${n===1?' is':'s are'} short, highlighted below. The order can be routed, but it can't be completed until the stock arrives or the quantities are changed.</div>`}
+function itemsHtml(r){const SL=shortLines(r);if(!r.items.length)return 'None';return r.items.map((it,i)=>{const t=esc(`${it.qty} × ${nm(state.products,it.productId,'?')}${it.batchId?' (batch '+batchNo(state,it.batchId)+')':''}`);return SL[i]?`<span class="short-it" title="Short: ${SL[i].have} available, needs ${SL[i].need}">${t}</span>`:t}).join(', ')}
 function waitBadge(r){const sh=stockShort(state,r);if(!sh.length)return '';return ` <span class="st st-waiting-for-stock" title="${esc(sh.map(x=>(x.loc?locName(state,x.loc)+': ':'')+x.have+' of '+x.need+' '+nm(state.products,x.pid)+' ('+batchNo(state,x.bid)+')').join('; '))}">Waiting for stock</span>`}
 function checkStock(s,r){
   const need={};
@@ -1219,8 +1230,9 @@ function openStop(taskId){
   const rt=t.routeId&&find(state.routes,t.routeId);const ag=find(state.agents,t.agentId)||{};const c=r.customerId&&find(state.customers,r.customerId);
   const pr=id=>find(state.products,id)||{};
   const orig={};(r.origItems||[]).forEach(it=>{const k=it.productId+'|'+(it.batchId||'');orig[k]=(orig[k]||0)+Number(it.qty)});
-  const rows=r.items.map(it=>{const k=it.productId+'|'+(it.batchId||'');const o=r.adjusted&&orig[k]!==undefined&&orig[k]!==Number(it.qty)?` <span class="muted small">(ordered ${orig[k]})</span>`:'';
-    return `<tr><td><span class="code">${esc(pr(it.productId).code||'')}</span> ${esc(pr(it.productId).name||'?')}</td><td>${esc(batchNo(state,it.batchId)||'')}</td><td class="num">${esc(String(it.qty))}${o}</td><td>${esc(locName(state,itemLoc(it))||'')}</td></tr>`}).join('');
+  const SL=shortLines(r);
+  const rows=r.items.map((it,i)=>{const k=it.productId+'|'+(it.batchId||'');const o=r.adjusted&&orig[k]!==undefined&&orig[k]!==Number(it.qty)?` <span class="muted small">(ordered ${orig[k]})</span>`:'';
+    return `<tr class="${SL[i]?'short':''}"><td><span class="code">${esc(pr(it.productId).code||'')}</span> ${esc(pr(it.productId).name||'?')}${SL[i]?shortMsg(SL[i],pr(it.productId)):''}</td><td>${esc(batchNo(state,it.batchId)||'')}</td><td class="num">${esc(String(it.qty))}${o}</td><td>${esc(locName(state,itemLoc(it))||'')}</td></tr>`}).join('');
   const hist=state.log.filter(l=>l.ref===r.ref).slice().reverse();
   const tks=(state.tickets||[]).filter(x=>x.ref===r.ref).filter(tkCanSee);
   const kv=(k,v)=>v?`<div class="kv"><span>${k}</span><span>${v}</span></div>`:'';
@@ -1236,7 +1248,7 @@ function openStop(taskId){
     </div>
     ${r.notes?`<div class="reqnote"><strong>Note:</strong> ${esc(r.notes)}</div>`:''}
     ${r.adjusted&&r.adjustReason?`<p class="small" style="margin:8px 0"><strong>Changed at completion:</strong> ${esc(r.adjustReason)}</p>`:''}
-    <h3 style="margin:16px 0 6px">Products</h3>
+    <h3 style="margin:16px 0 6px">Products</h3>${shortBanner(r)}
     <div class="tbl"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Qty</th><th>From</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted">No products</td></tr>'}</tbody></table></div>
     <h3 style="margin:16px 0 6px">Tickets</h3>
     ${tks.length?`<ul class="pl">${tks.map(x=>`<li><span>${esc(x.title)}</span><span class="small muted" style="margin-left:auto">${esc(x.status)}</span></li>`).join('')}</ul>`:'<p class="muted small">No tickets on this order.</p>'}
@@ -1621,7 +1633,7 @@ function pgRequests(u){
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${(()=>{const n=state.tickets.filter(t=>t.ref===r.ref&&t.status==='Open'&&tkCanSee(t)).length;return `<button class="btn plain sm" data-act="tkGo" data-ref="${esc(r.ref)}" title="Tickets on this order">Ticket${n?` <span class="nav-c">${n}</span>`:''}</button>`})()}${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),H(itemsHtml(r)),H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${(()=>{const n=state.tickets.filter(t=>t.ref===r.ref&&t.status==='Open'&&tkCanSee(t)).length;return `<button class="btn plain sm" data-act="tkGo" data-ref="${esc(r.ref)}" title="Tickets on this order">Ticket${n?` <span class="nav-c">${n}</span>`:''}</button>`})()}${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
   return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
   ${isAll()&&!editR?allGate('create a request'):`<div class="panel" id="reqPanel"${editR?' style="border:2px solid var(--route)"':''}><div class="spread"><h2>${editR?'Edit request '+esc(editR.ref):'New request'}</h2>${editR?`<span class="small muted">Created by ${esc(editR.createdBy)}, ${fmtT(editR.createdAt)}</span>`:''}</div>
   <form data-form="request" class="stack" id="reqForm"${editR?` data-edit="${esc(editR.id)}"`:''}>
@@ -1663,7 +1675,7 @@ function preparePanel(r){
   const locs=projLocs(state,r.projectId).filter(l=>!(r.type==='Transfer'&&r.dest===l[0]));
   let lines='';
   if(T.flow!=='none'){
-    lines=`<div class="tbl" style="margin-bottom:12px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>${esc(T.wh)} (warehouse or sales team)</th></tr></thead><tbody>${r.items.map((it,i)=>`<tr><td>${esc(nm(state.products,it.productId))}</td><td class="code">${esc(batchNo(state,it.batchId))}</td><td class="num">${it.qty}</td><td><select name="wh_${i}" required aria-label="Stock location for ${esc(nm(state.products,it.productId))}"><option value="">Choose warehouse or sales team</option>${[['w','Warehouses'],['s','Sales team']].map(([k,lbl])=>{const L=locs.filter(l=>l[2]===k);return L.length?`<optgroup label="${lbl}">${L.map(l=>{const a=qty(state,l[0],it.productId,it.batchId);return `<option value="${l[0]}" ${itemLoc(it)===l[0]?'selected':''}>${esc(l[1])}, ${a} in stock</option>`}).join('')}</optgroup>`:''}).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
+    lines=`<div class="tbl" style="margin-bottom:12px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>${esc(T.wh)} (warehouse or sales team)</th></tr></thead><tbody>${(()=>{const SL=shortLines(r);return r.items.map((it,i)=>`<tr class="${SL[i]?'short':''}"><td>${esc(nm(state.products,it.productId))}${SL[i]?shortMsg(SL[i],find(state.products,it.productId)):''}</td><td class="code">${esc(batchNo(state,it.batchId))}</td><td class="num">${it.qty}</td><td><select name="wh_${i}" required aria-label="Stock location for ${esc(nm(state.products,it.productId))}"><option value="">Choose warehouse or sales team</option>${[['w','Warehouses'],['s','Sales team']].map(([k,lbl])=>{const L=locs.filter(l=>l[2]===k);return L.length?`<optgroup label="${lbl}">${L.map(l=>{const a=qty(state,l[0],it.productId,it.batchId);return `<option value="${l[0]}" ${itemLoc(it)===l[0]?'selected':''}>${esc(l[1])}, ${a} in stock</option>`}).join('')}</optgroup>`:''}).join('')}</select></td></tr>`).join('')})()}</tbody></table></div>`;
   }else{
     lines=`<p class="note" style="margin-bottom:12px">Documentation has no stock movement. Save to mark it prepared.</p>`;
   }
@@ -1692,7 +1704,7 @@ function preparePanel(r){
 function pgPrepare(u){
   if(!ui.project)return ph('prepare')+needProject();
   const R=P(state.requests).filter(r=>['New','Prepared','Failed'].includes(r.status));
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),itemsText(state,r)||'None',H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),H(itemsHtml(r)),H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
   const locked=P(state.requests).filter(r=>['Routed','In transit'].includes(r.status)).length;
   return ph('prepare','Choose where the stock for each product comes from or goes to, a warehouse or a sales team member. This creates the task; the agent and date are set on the route.')+
   table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent and date'},{l:''}],rows,'Nothing to prepare. New requests from Operations appear here.')+
@@ -1709,10 +1721,11 @@ function pickHead(r){const f=(TYPES[r.type]||{}).flow;return f==='in'?(r.type===
 function pickTable(r,compact){
   if(!r.items.length)return compact?'':'<p class="muted small">No products on this order.</p>';
   const T=TYPES[r.type]||{};
-  const rows=r.items.map(it=>{const b=find(state.batches,it.batchId)||{};const p=find(state.products,it.productId)||{};const loc=itemLoc(it);
-    return `<tr><td><strong>${esc(p.name||'?')}</strong><br><span class="muted small">${esc([p.code,p.sku].filter(Boolean).join(' | '))}</span></td><td class="code">${esc(b.batchNo||'')}${!compact&&b.expiry?`<br><span class="muted small" style="font-family:var(--body);font-weight:500">exp ${esc(fmtD(b.expiry))}</span>`:''}</td><td class="num"><strong>${it.qty}</strong>${p.unit&&!compact?` <span class="muted small">${esc(p.unit)}</span>`:''}</td><td>${T.flow==='none'?'<span class="muted">No stock movement</span>':loc?`<strong>${esc(locName(state,loc))}</strong>`:'<span class="muted">Not chosen yet</span>'}</td></tr>`}).join('');
+  const SL=shortLines(r);
+  const rows=r.items.map((it,i)=>{const b=find(state.batches,it.batchId)||{};const p=find(state.products,it.productId)||{};const loc=itemLoc(it);
+    return `<tr class="${SL[i]?'short':''}"><td><strong>${esc(p.name||'?')}</strong><br><span class="muted small">${esc([p.code,p.sku].filter(Boolean).join(' | '))}</span>${SL[i]?shortMsg(SL[i],p):''}</td><td class="code">${esc(b.batchNo||'')}${!compact&&b.expiry?`<br><span class="muted small" style="font-family:var(--body);font-weight:500">exp ${esc(fmtD(b.expiry))}</span>`:''}</td><td class="num"><strong>${it.qty}</strong>${p.unit&&!compact?` <span class="muted small">${esc(p.unit)}</span>`:''}</td><td>${T.flow==='none'?'<span class="muted">No stock movement</span>':loc?`<strong>${esc(locName(state,loc))}</strong>`:'<span class="muted">Not chosen yet</span>'}</td></tr>`}).join('');
   const tot=r.items.reduce((a,it)=>a+Number(it.qty||0),0);
-  return `<div class="tbl pick" style="margin-top:8px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>${pickHead(r)}</th></tr></thead><tbody>${rows}</tbody>${r.items.length>1?`<tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot}</strong></td><td></td></tr></tfoot>`:''}</table></div>`;
+  return `${compact?'':shortBanner(r)}<div class="tbl pick" style="margin-top:8px"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Quantity</th><th>${pickHead(r)}</th></tr></thead><tbody>${rows}</tbody>${r.items.length>1?`<tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot}</strong></td><td></td></tr></tfoot>`:''}</table></div>`;
 }
 /* Loading list for a whole trip: everything to collect, grouped by location */
 function loadingList(rt){
