@@ -813,7 +813,8 @@ function fbEmail(u){return String(u||'').trim().toLowerCase().replace(/[^a-z0-9.
 function fbDoc(c,d){return FB.db.collection(c).doc(d)}
 function fbErr(e){const c=(e&&e.code)||'';
   if(/permission-denied/.test(c))return 'The database refused this action. Check that the Firestore rules are published and that your account is active.';
-  if(/unavailable|network/.test(c))return 'No connection to the database. Check your internet and try again.';
+  if(/unavailable|network/.test(c))return (/^auth\//.test(c)?'Could not reach Firebase sign-in':'No connection to the database')+'. Check your internet and try again. If it keeps happening, send this code to support: '+c+((e&&e.step)?' ('+e.step+')':'')+'.';
+  if(/deadline-exceeded|resource-exhausted|invalid-argument/.test(c))return 'The database did not accept the save ('+c+((e&&e.step)?', '+e.step:'')+'). Try again; if it repeats, send this code to support.';
   if(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c))return 'Username or password is incorrect.';
   if(/too-many-requests/.test(c))return 'Too many attempts. Wait a few minutes and try again.';
   if(/email-already-in-use/.test(c))return 'A login with this username already exists.';
@@ -834,15 +835,16 @@ async function fbReadTx(tx){
   const d=h.data();let str='';for(let i=0;i<d.n;i++){const c=await tx.get(fbDoc('state','c'+i));str+=((c.exists&&c.data())||{}).d||''}
   return {rev:d.rev||0,n:d.n||0,state:str?JSON.parse(str):null};
 }
+async function fbRetry(f,step){let last;for(let i=0;i<3;i++){try{return await f()}catch(e){last=e;if(!/unavailable|network|aborted|deadline-exceeded/.test((e&&e.code)||''))break;await new Promise(r=>setTimeout(r,800*(i+1)))}}if(last&&step&&!last.step)try{last.step=step}catch(_){}throw last}
 async function fbAct(fn,okMsg){
   try{
     let out=null;
-    await FB.db.runTransaction(async tx=>{
+    await fbRetry(()=>FB.db.runTransaction(async tx=>{
       const h=await tx.get(fbDoc('state','head'));const hd=h.exists?h.data():{rev:0,n:0};
       let base=state;
       if((hd.rev||0)!==(state.rev||0)){let str='';for(let i=0;i<hd.n;i++){const c=await tx.get(fbDoc('state','c'+i));str+=((c.exists&&c.data())||{}).d||''}base=migrate(str?JSON.parse(str):blank())}
       const st=structuredClone(base);fn(st);pruneRoutes(st);st.rev=(hd.rev||0)+1;fbWrite(tx,st,hd.n);out=st;
-    });
+    }),'saving');
     state=out;render();
     const m=okMsg||toastMsg;toastMsg='';if(m)toast(m);
     return true;
@@ -857,12 +859,13 @@ function fbSyncAccess(u){if(!FB||!u||!u.fbUid)return Promise.resolve();return fb
 async function fbCreateLogin(username,password){
   FB.secondary=FB.secondary||firebase.initializeApp(FIREBASE_CONFIG,'secondary');
   const a2=FB.secondary.auth();let cred;
-  try{cred=await a2.createUserWithEmailAndPassword(fbEmail(username),password)}
+  try{await a2.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(e){}
+  try{cred=await fbRetry(()=>a2.createUserWithEmailAndPassword(fbEmail(username),password),'creating the login')}
   catch(e){if(!/email-already-in-use/.test(e.code||''))throw e;
     /* A login was left behind by an earlier attempt that did not finish (or by a user record that was lost).
        If the password matches, reuse that login instead of failing. */
-    try{cred=await a2.signInWithEmailAndPassword(fbEmail(username),password)}
-    catch(e2){const er=new Error('A login named '+username+' already exists in Firebase from an earlier attempt, but it is not linked to any user here. Type the same password you used the first time and try again. If you do not know it, delete '+fbEmail(username)+' in Firebase Console, Authentication, Users, then create the user again, or choose another username.');er.code='orphan-login';throw er}}
+    try{cred=await fbRetry(()=>a2.signInWithEmailAndPassword(fbEmail(username),password),'checking the existing login')}
+    catch(e2){if(/network|unavailable/.test(e2.code||''))throw e2;const er=new Error('A login named '+username+' already exists in Firebase from an earlier attempt, but it is not linked to any user here. Type the same password you used the first time and try again. If you do not know it, delete '+fbEmail(username)+' in Firebase Console, Authentication, Users, then create the user again, or choose another username.');er.code='orphan-login';throw er}}
   const uid=cred.user.uid;await a2.signOut();
   const taken=(state.users||[]).find(x=>x.fbUid===uid);if(taken){const er=new Error('This login is already linked to user '+taken.username+'.');er.code='linked';throw er}
   return uid;
@@ -3203,7 +3206,7 @@ const forms={
       if(!fd.getAll('pages').length){toast('Give the user at least one page.','bad');return}
       let uid;try{uid=await fbCreateLogin(un,pw)}catch(e){toast(fbErr(e),'bad');return}
       const role=fd.get('role');
-      try{await fbDoc('access',uid).set({username:un,role,active:true})}catch(e){toast(fbErr(e),'bad');return}
+      try{await fbRetry(()=>fbDoc('access',uid).set({username:un,role,active:true}),'saving the access record')}catch(e){toast(fbErr(e),'bad');return}
       await act(s=>{s.users.push({id:rid('u'),username:un,name:String(fd.get('name')).trim(),role,scope:fd.get('scope')||'all',projects:fd.getAll('projects'),pages:fd.getAll('pages'),active:true,fbUid:uid,createdAt:now()});log(s,'User created',null,un+', '+ROLES[role],'Active',null,null)},'User created. Share the username and password with them.');
       return;
     }
