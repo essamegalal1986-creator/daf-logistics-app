@@ -663,6 +663,9 @@ function batchHint(line,type){
   const list=allowedBatches(state,p.value,type);const t=inp.value.trim().toUpperCase();
   if(!t){h.classList.add('muted');h.textContent=list.length?'Earliest expiry: '+list[0].batchNo:'';return}
   const exact=list.find(b=>b.batchNo.toUpperCase()===t);
+  {const ci=line.querySelector('input[name=item_cost]');if(ci&&type==='Received'){const bc=exact?bCost(exact):null;const ch=line.querySelector('.cost-hint');
+    if(bc!==null&&(ci.value===''||ci.dataset.auto)){ci.value=bc;ci.dataset.auto='b';if(ch)ch.textContent='Batch COGS '+money(bc)}
+    else if(bc===null&&ci.dataset.auto==='b'){ci.value='';ci.dataset.auto='';if(ch)ch.textContent='No COGS on this batch: enter it or leave empty'}}}
   if(exact){h.classList.add('okh');h.textContent=batchLabel(state,exact);return}
   const m=list.filter(b=>b.batchNo.toUpperCase().includes(t));
   if(m.length){h.classList.add('muted');h.textContent=m.length+' match'+(m.length>1?'es':'')+': '+m.slice(0,3).map(b=>b.batchNo).join(', ')+(m.length>3?'…':'')}
@@ -735,11 +738,14 @@ function locName(s,l){
 }
 /* COGS timing: 'before' = the product's Unit COGS is applied when stock is received; 'after' = every receipt goes to COGS required */
 /* Last cost this product was received at (latest receipt with a cost) */
+function bCost(b){return b&&b.cost!==undefined&&b.cost!==null&&b.cost!==''&&Number(b.cost)>=0?Number(b.cost):null}
+function costIn(fd,k){const v=String(fd.get(k)??'').replace(/,/g,'').trim();if(v==='')return null;if(!(Number(v)>=0))throw new Error('Enter a valid unit COGS, or leave it empty to add it when you receive.');return Number(v)}
 function lastCost(pid){let best=null;(state.movements||[]).forEach(m=>{if(m.productId!==pid||!isCostLayer(m)||m.cost===null||m.cost===undefined||m.cost==='')return;if(!best||String(m.at)>String(best.at))best=m});return best?{c:Number(best.cost),at:best.at}:null}
 function cogsAfter(p){return !!p&&(p.cogsTiming==='after'||(!p.cogsTiming&&!(Number(p.cogs)>0)))}
 function move(s,m,by){
   if(isLoc(m.from))adj(s,m.from,m.productId,m.batchId,-m.qty);
   if(isLoc(m.to))adj(s,m.to,m.productId,m.batchId,m.qty);
+  if(isCostLayer(m)&&m.cost===undefined&&bCost(find(s.batches,m.batchId))!==null){m.cost=bCost(find(s.batches,m.batchId));m.costBy='Batch COGS';m.costAt=now()}
   if(isCostLayer(m)&&m.cost===undefined){const pr=find(s.products,m.productId);m.cost=pr&&!cogsAfter(pr)&&Number(pr.cogs)>0?Number(pr.cogs):null;if(m.cost!==null){m.costBy='Product COGS';m.costAt=now()}}
   s.movements.push({id:'MOV-'+pad(++s.seq.mov,5),at:now(),by:by||cur(),...m});
 }
@@ -1538,8 +1544,8 @@ function pgProducts(u){
 function pgBatches(){
   const B=P(state.batches).slice().sort((a,b)=>(nm(state.products,a.productId)).localeCompare(nm(state.products,b.productId))||(a.expiry||'').localeCompare(b.expiry||''));
   const soon=d=>d&&(new Date(d+'T00:00:00')-new Date())/864e5<60;
-  const rows=B.map(b=>{const tot=batchAvail(state,b.id);const row=[H(`<span class="code">${esc(b.batchNo)}</span>`),nm(state.products,b.productId),fmtD(b.mfg),H(b.expiry?`<span class="${soon(b.expiry)?'neg':''}">${esc(fmtD(b.expiry))}</span>`:'<span class="small" style="color:var(--warn);font-weight:700">No expiry</span>'),String(tot),projLocs(state,b.projectId).map(l=>{const q=qty(state,l[0],b.productId,b.id);return q?l[1]+': '+q:''}).filter(Boolean).join(', '),H(`<button class="btn plain sm" data-act="expand" data-id="${b.id}">Edit</button>`)];
-    if(ui.expand===b.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="7"><form data-form="batchEdit" data-id="${b.id}" class="fgrid"><label>Batch number<input name="batchNo" required value="${esc(b.batchNo)}"></label><label>Manufactured<input type="date" name="mfg" value="${esc(b.mfg||'')}"></label><label>Expiry<input type="date" name="expiry" value="${esc(b.expiry||'')}"></label><div class="row"><button class="btn" type="submit">Save batch</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
+  const rows=B.map(b=>{const tot=batchAvail(state,b.id);const row=[H(`<span class="code">${esc(b.batchNo)}</span>`),nm(state.products,b.productId),fmtD(b.mfg),H(b.expiry?`<span class="${soon(b.expiry)?'neg':''}">${esc(fmtD(b.expiry))}</span>`:'<span class="small" style="color:var(--warn);font-weight:700">No expiry</span>'),...(canCost()?[H(bCost(b)===null?'<span class="muted small">Add on receiving</span>':money(bCost(b)))]:[]),String(tot),projLocs(state,b.projectId).map(l=>{const q=qty(state,l[0],b.productId,b.id);return q?l[1]+': '+q:''}).filter(Boolean).join(', '),H(`<button class="btn plain sm" data-act="expand" data-id="${b.id}">Edit</button>`)];
+    if(ui.expand===b.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="${canCost()?8:7}"><form data-form="batchEdit" data-id="${b.id}" class="fgrid"><label>Batch number<input name="batchNo" required value="${esc(b.batchNo)}"></label><label>Manufactured<input type="date" name="mfg" value="${esc(b.mfg||'')}"></label><label>Expiry<input type="date" name="expiry" value="${esc(b.expiry||'')}"></label>${canCost()?`<label>Unit COGS <span class="muted small">(optional)</span><input name="cost" type="number" min="0" step="0.01" value="${bCost(b)===null?'':bCost(b)}" placeholder="Not set yet"></label>`:''}<div class="row"><button class="btn" type="submit">Save batch</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return `<h2 style="margin:26px 0 6px">Batches in ${esc(nm(state.projects,ui.project))}</h2>
   <p class="muted" style="margin-bottom:12px">Each product can hold several batches. Requests choose a batch per product, and stock is tracked per batch.</p>
@@ -1548,9 +1554,10 @@ function pgBatches(){
     <label>Batch number<input name="batchNo" required placeholder="e.g. SW-2610-A"></label>
     <label>Manufactured<input name="mfg" type="date"></label>
     <label>Expiry<input name="expiry" type="date"></label>
+    ${canCost()?`<label>Unit COGS <span class="muted small">(optional)</span><input name="cost" type="number" min="0" step="0.01" placeholder="Add now or when you receive" title="Cost per unit for this batch. Leave empty if you don't know it yet: you can add it later here or on the receiving request."></label>`:''}
     <button class="btn" type="submit">Add batch</button>
   </form></div>
-  ${table([{l:'Batch'},{l:'Product'},{l:'Manufactured'},{l:'Expiry'},{l:'In stock',num:1},{l:'Where'},{l:''}],rows,'No batches yet. Add the first one above.')}`;
+  ${table([{l:'Batch'},{l:'Product'},{l:'Manufactured'},{l:'Expiry'},...(canCost()?[{l:'Unit COGS',num:1}]:[]),{l:'In stock',num:1},{l:'Where'},{l:''}],rows,'No batches yet. Add the first one above.')}`;
 }
 
 /* ===== Records shared with all projects: review and move to one project ===== */
@@ -3033,8 +3040,9 @@ const forms={
     if(!pid)throw new Error('Choose the product.');
     if(s.batches.some(b=>b.productId===pid&&b.batchNo===no))throw new Error('Batch '+no+' already exists for this product.');
     const mfg=fd.get('mfg')||'',exp=fd.get('expiry')||'';if(mfg&&exp&&exp<mfg)throw new Error('Expiry must be after the manufacturing date.');
-    s.batches.push({id:rid('bt'),projectId:(find(s.products,pid)||{}).projectId||ui.project,productId:pid,batchNo:no,mfg,expiry:exp,createdAt:now(),createdBy:cur()});
-    log(s,'Batch added',null,no+' for '+nm(s.products,pid)+(exp?', expiry '+exp:''));
+    const cost=canCost()?costIn(fd,'cost'):null;
+    const nb={id:rid('bt'),projectId:(find(s.products,pid)||{}).projectId||ui.project,productId:pid,batchNo:no,mfg,expiry:exp,createdAt:now(),createdBy:cur()};if(cost!==null){nb.cost=cost;nb.costBy=cur();nb.costAt=now()}s.batches.push(nb);
+    log(s,'Batch added',null,no+' for '+nm(s.products,pid)+(exp?', expiry '+exp:'')+(cost!==null?', unit COGS '+money(cost):', COGS to add on receiving'));
   },'Batch added.')},
   gov(fd){act(s=>{const n=String(fd.get('name')).trim();if(s.govs.some(g=>g.name.toLowerCase()===n.toLowerCase()))throw new Error(n+' is already in the list.');s.govs.push({id:rid('gov'),name:n});log(s,'Governorate added',null,n,'',null,null)},'Governorate added.')},
   group(fd){act(s=>{const name=String(fd.get('name')).trim(),govIds=fd.getAll('govs');if(!govIds.length)throw new Error('Tick at least one governorate for the group.');if(s.routeGroups.some(g=>g.name.toLowerCase()===name.toLowerCase()))throw new Error('A group named '+name+' already exists.');s.routeGroups.push({id:rid('rg'),name,govIds,createdAt:now(),createdBy:cur()});log(s,'Route group created',null,name+': '+govIds.map(id=>nm(s.govs,id)).join(', '),'',null,null)},'Route group created.')},
@@ -3044,9 +3052,14 @@ const forms={
     if(s.batches.some(x=>x.id!==b.id&&x.productId===b.productId&&x.batchNo===no))throw new Error('Batch '+no+' already exists for this product.');
     const m=fd.get('mfg')||'',e=fd.get('expiry')||'';if(m&&e&&e<m)throw new Error('Expiry must be after the manufacturing date.');
     const ch=[];if(no!==b.batchNo)ch.push('number '+b.batchNo+' to '+no);if(m!==(b.mfg||''))ch.push('manufactured '+(m||'none'));if(e!==(b.expiry||''))ch.push('expiry '+(e||'none'));
+    const hasC=canCost()&&fd.has('cost');const nc=hasC?costIn(fd,'cost'):bCost(b);if(hasC&&nc!==bCost(b))ch.push('unit COGS '+(nc===null?'cleared':money(nc)));
     if(!ch.length)throw new Error('Nothing was changed.');
+    let filled=0;if(hasC&&nc!==bCost(b)){if(nc===null){delete b.cost}else{b.cost=nc;b.costBy=cur();b.costAt=now();
+      /* stock of this batch already received without a cost takes the batch COGS */
+      s.movements.forEach(mv=>{if(mv.batchId===b.id&&isCostLayer(mv)&&(mv.cost===null||mv.cost===undefined||mv.cost==='')){mv.cost=nc;mv.costBy=cur()+' (batch COGS)';mv.costAt=now();filled++}})}}
+    if(filled)ch.push(filled+' receipt line(s) waiting for COGS now use it');toastMsg=filled?'Batch saved. '+filled+' receipt line(s) waiting for COGS now use '+money(nc)+'.':'Batch saved.';
     b.batchNo=no;b.mfg=m;b.expiry=e;ui.expand=null;log(s,'Batch updated',null,nm(s.products,b.productId)+', '+no+': '+ch.join(', '),'',null,b.projectId===ALL?null:b.projectId);
-  },'Batch saved.')},
+  },null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   openingEdit(fd,f){act(s=>{
     const m=find(s.movements,f.dataset.id);if(!m||m.ref!=='OPENING')throw new Error('This opening stock entry no longer exists.');
     const loc=fd.get('loc'),bid=fd.get('batch'),q=Math.floor(Number(fd.get('qty')));
@@ -3892,6 +3905,7 @@ document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.datase
   if(el.dataset&&el.dataset.inp==='soCust')return;if(el.dataset&&el.dataset.inp==='count'){scLive(el.form,el.dataset.p);return}if(el.dataset&&el.dataset.inp==='custId'){const t=el.value.trim();applyCustomer(el.form,custByCode(t),t);return}if(el.dataset&&el.dataset.inp==='batchFind'){const line=el.closest('.line');batchHint(line,el.form.elements.type.value)}});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(!el)return;const h=changes[el.dataset.chg];if(h)h(el)});
 document.addEventListener('focusout',()=>{setTimeout(()=>{if(ui.pending&&!ui.dirty){const a=document.activeElement;if(!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))softRender()}},200)});
+document.addEventListener('input',e=>{const el=e.target;if(el&&el.name==='item_cost'&&e.isTrusted!==false)el.dataset.auto=''},true);
 /* typing in any form marks it as being filled in, so background updates do not clear it */
 ['input','change'].forEach(t=>document.addEventListener(t,e=>{const el=e.target;if(el&&el.closest&&el.closest('.main form')&&!el.closest('form[data-form="traceForm"]'))ui.dirty=true},true));
 new MutationObserver(()=>{const s=document.querySelector('select[data-chg="routeAgent"]');if(s&&!s.dataset.init){s.dataset.init='1';filterRouteTasks()}}).observe(document.getElementById('app'),{childList:true,subtree:true});
