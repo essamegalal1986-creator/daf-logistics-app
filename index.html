@@ -856,7 +856,16 @@ async function fbReplace(st){
 function fbSyncAccess(u){if(!FB||!u||!u.fbUid)return Promise.resolve();return fbDoc('access',u.fbUid).set({username:u.username,role:u.role,active:!!u.active},{merge:true}).catch(e=>toast(fbErr(e),'bad'))}
 async function fbCreateLogin(username,password){
   FB.secondary=FB.secondary||firebase.initializeApp(FIREBASE_CONFIG,'secondary');
-  const a2=FB.secondary.auth();const cred=await a2.createUserWithEmailAndPassword(fbEmail(username),password);const uid=cred.user.uid;await a2.signOut();return uid;
+  const a2=FB.secondary.auth();let cred;
+  try{cred=await a2.createUserWithEmailAndPassword(fbEmail(username),password)}
+  catch(e){if(!/email-already-in-use/.test(e.code||''))throw e;
+    /* A login was left behind by an earlier attempt that did not finish (or by a user record that was lost).
+       If the password matches, reuse that login instead of failing. */
+    try{cred=await a2.signInWithEmailAndPassword(fbEmail(username),password)}
+    catch(e2){const er=new Error('A login named '+username+' already exists in Firebase from an earlier attempt, but it is not linked to any user here. Type the same password you used the first time and try again. If you do not know it, delete '+fbEmail(username)+' in Firebase Console, Authentication, Users, then create the user again, or choose another username.');er.code='orphan-login';throw er}}
+  const uid=cred.user.uid;await a2.signOut();
+  const taken=(state.users||[]).find(x=>x.fbUid===uid);if(taken){const er=new Error('This login is already linked to user '+taken.username+'.');er.code='linked';throw er}
+  return uid;
 }
 function noAccessView(){
   return `<div class="login"><div class="login-card"><div class="app-name"><b>DAF</b> Logistics App${TEST_BUILD?' <span style="background:#F2B632;color:#2B1F00;font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;vertical-align:4px">TEST</span>':''}</div>
