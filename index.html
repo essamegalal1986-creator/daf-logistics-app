@@ -369,6 +369,7 @@ tr.short td{background:var(--bad-soft)}tr.short td:first-child{box-shadow:inset 
 .short-msg{margin-top:4px;font-size:12px;font-weight:700;color:var(--bad);display:flex;gap:6px;align-items:center}.short-msg i{font-style:normal;width:16px;height:16px;border-radius:50%;background:var(--bad);color:#fff;display:grid;place-items:center;font-size:11px}
 .short-it{color:var(--bad);font-weight:700;background:var(--bad-soft);border-radius:4px;padding:0 4px}
 .short-ban{background:var(--bad-soft);color:var(--bad);border-left:4px solid var(--bad);padding:8px 12px;margin:8px 0;font-size:13px}
+.ptag.shared{background:var(--warn-soft);color:var(--warn);border-color:transparent}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .kpi,.stat,.rsum-i,.xbox{min-width:0;overflow:hidden}
 .kpi>b,.stat>b,.rsum-i>b,.xbox>b{display:block;white-space:nowrap;overflow:hidden;max-width:100%}
@@ -933,7 +934,10 @@ const P=list=>{const out=P0(list);if(!state||!scopeOwn())return out;
   if(list===state.requests)return out.filter(visReq);if(list===state.tasks)return out.filter(visTask);if(list===state.routes)return out.filter(visRoute);
   if(list===state.sales)return out.filter(visSale);if(list===state.movements)return out.filter(visMov);if(list===state.counts)return out.filter(c=>c.by===me().username);return out};
 function projCode(pid){return pid===ALL?'ALL':(find(state.projects,pid)||{}).code||''}
-function projTag(pid){return isAll()?`<span class="ptag">${esc(projCode(pid))}</span>`:''}
+function projTag(pid){if(pid===ALL)return '<span class="ptag shared" title="Shared: shown in every project">All projects</span>';return isAll()?`<span class="ptag">${esc(projCode(pid))}</span>`:''}
+/* In All my projects, new setup records ask which project they belong to */
+function setupProjSel(){if(!isAll())return '';return `<label>Project<select name="projectId" required><option value="">Choose project</option>${myProjIds().map(id=>`<option value="${esc(id)}">${esc(projCode(id)+': '+nm(state.projects,id))}</option>`).join('')}<option value="${ALL}">All projects (shared)</option></select></label>`}
+function setupPid(fd){if(!isAll())return ui.project;const v=fd.get('projectId');if(!v)throw new Error('Choose the project.');return v}
 function allGate(what){const projs=myProjects(me());return `<div class="panel"><p style="margin-bottom:10px">You are viewing <strong>all projects</strong>. To ${esc(what)}, choose the project first:</p><div class="row">${projs.map(p=>`<button class="btn ghost sm" data-act="pickProject" data-id="${p.id}">${esc(p.code)}: ${esc(p.name)}</button>`).join('')}</div></div>`}
 /* Logins that can be linked to a logistics agent: logistics agents and logistics team leaders */
 function agentLoginOpts(sel,agentId){
@@ -1501,7 +1505,7 @@ function lsPanel(){
 function pgProducts(u){
   const projs=myProjects(u);
   const canEdit=u.pages.includes('products');
-  const rows=state.products.filter(p=>(p.projectId===ALL||projs.some(x=>x.id===p.projectId))&&pfMatch(p)).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(p=>{const row=[H(`<span class="code">${esc(p.code||'')}</span>`),H(`<span class="code">${esc(p.sku)}</span>`),p.name,srcLabel(p),p.category||'',p.company||'',p.unit,{h:money(p.price)},...(canCost()?[{h:cogsAfter(p)?'<span class="muted small">After receiving</span>':money(p.cogs)}]:[]),p.projectId===ALL?'All projects':nm(state.projects,p.projectId),H(canEdit?`<button class="btn plain sm" data-act="expand" data-id="${p.id}">Edit</button>`:'')];
+  const rows=P0(state.products).filter(p=>pfMatch(p)).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(p=>{const row=[H(`<span class="code">${esc(p.code||'')}</span>`),H(`<span class="code">${esc(p.sku)}</span>`),p.name,srcLabel(p),p.category||'',p.company||'',p.unit,{h:money(p.price)},...(canCost()?[{h:cogsAfter(p)?'<span class="muted small">After receiving</span>':money(p.cogs)}]:[]),p.projectId===ALL?'All projects':nm(state.projects,p.projectId),H(canEdit?`<button class="btn plain sm" data-act="expand" data-id="${p.id}">Edit</button>`:'')];
     if(ui.expand===p.id){row._cls='expanded';row._after=`<tr class="expanded"><td colspan="${canCost()?11:10}"><form data-form="productEdit" data-id="${p.id}" class="fgrid"><label>Product ID<input name="code" required value="${esc(p.code||'')}"></label><label>SKU<input name="sku" required value="${esc(p.sku)}"></label><label>Product name<input name="name" required value="${esc(p.name)}"></label><label>Unit<input name="unit" required value="${esc(p.unit||'')}"></label><label>Selling price (per unit)<input name="price" type="number" min="0" step="0.01" value="${Number(p.price)||0}"></label><label>Purchased by<select name="source"><option value="" ${!p.source?'selected':''}>Not set</option><option value="own" ${p.source==='own'?'selected':''}>Our company</option><option value="third" ${p.source==='third'?'selected':''}>Third party</option></select></label><label>Category<select name="category">${lsOpts('cat',p.category)}</select></label><label>Company<select name="company">${lsOpts('comp',p.company)}</select></label>${canCost()?`<label>COGS timing<select name="cogsTiming" data-chg="cogsTiming"><option value="before" ${!cogsAfter(p)?'selected':''}>Known before receiving</option><option value="after" ${cogsAfter(p)?'selected':''}>Entered after receiving</option></select></label><label class="cogs-val ${cogsAfter(p)?'hide':''}">Unit COGS (cost)<input name="cogs" type="number" min="0" step="0.01" value="${Number(p.cogs)>0?Number(p.cogs):''}" ${cogsAfter(p)?'disabled':''}><span class="small muted" style="font-weight:400">Applies to stock received from now on. Past receipts keep their cost.</span></label>`:''}${(()=>{const bs=state.batches.filter(b=>b.productId===p.id);return bs.length?`<div style="grid-column:1/-1"><p class="small" style="font-weight:700;margin-bottom:6px">Batches: manufactured and expiry dates</p><div class="tbl"><table><thead><tr><th>Batch</th><th>Manufactured</th><th>Expiry</th></tr></thead><tbody>${bs.map(b=>`<tr><td class="code">${esc(b.batchNo)}</td><td><input type="date" name="bm_${b.id}" value="${esc(b.mfg||'')}" style="max-width:170px"></td><td><input type="date" name="be_${b.id}" value="${esc(b.expiry||'')}" style="max-width:170px"></td></tr>`).join('')}</tbody></table></div></div>`:''})()}<div class="row"><button class="btn" type="submit">Save</button><button type="button" class="btn plain" data-act="expand" data-id="">Close</button></div></form></td></tr>`}
     return row});
   return ph('products','Create each product and link it to its project.')+`
@@ -1549,13 +1553,29 @@ function pgBatches(){
   ${table([{l:'Batch'},{l:'Product'},{l:'Manufactured'},{l:'Expiry'},{l:'In stock',num:1},{l:'Where'},{l:''}],rows,'No batches yet. Add the first one above.')}`;
 }
 
+/* ===== Records shared with all projects: review and move to one project ===== */
+const SH_KINDS=[['customers','Customer',x=>(x.code?x.code+' · ':'')+x.name],['warehouses','Warehouse',x=>x.name],['salesTeam','Sales team member',x=>x.name],['agents','Logistics agent',x=>x.name],['products','Product',x=>(x.code?x.code+' · ':'')+x.name]];
+function sharedList(){const out=[];SH_KINDS.forEach(([k,label,name])=>(state[k]||[]).filter(x=>x.projectId===ALL&&!x.deleted).forEach(x=>out.push({k,label,x,name:name(x)})));return out}
+/* projects a shared record is already used in (other than shared) */
+function sharedUse(s,k,id){const P=new Set();const add=p=>{if(p&&p!==ALL)P.add(p)};
+  if(k==='customers'){s.requests.forEach(r=>{if(r.customerId===id)add(r.projectId)});s.sales.forEach(x=>{if(x.customerId===id)add(x.projectId)})}
+  else if(k==='warehouses'||k==='salesTeam'){const loc=(k==='warehouses'?'W:':'S:')+id;s.movements.forEach(m=>{if(m.from===loc||m.to===loc)add(m.projectId)})}
+  else if(k==='agents'){s.tasks.forEach(t=>{if(t.agentId===id)add(t.projectId)});s.routes.forEach(r=>{if(r.agentId===id)add(r.projectId)})}
+  else if(k==='products'){s.requests.forEach(r=>{if(r.items.some(i=>i.productId===id))add(r.projectId)});s.sales.forEach(x=>{if((x.lines||[]).some(l=>l.productId===id))add(x.projectId)});s.movements.forEach(m=>{if(m.productId===id)add(m.projectId)})}
+  return [...P]}
+function sharedPanel(){const L=sharedList();const projs=myProjects(me());
+  if(!L.length)return '<div class="panel empty">No shared records.</div>';
+  return `<div class="panel"><p class="muted small" style="margin-bottom:12px">These records are shared, so they show in <strong>every</strong> project. They were added while <em>All my projects</em> was selected. Move each one to the project it belongs to. A record already used by orders, stock or trips of one project can only move to that project; one used by several projects has to stay shared.</p>
+  ${table([{l:'Type'},{l:'Name'},{l:'Used in'},{l:'Move to'}],L.map(r=>{const used=sharedUse(state,r.k,r.x.id);const opts=used.length>1?[]:projs.filter(p=>!used.length||p.id===used[0]);
+    return [r.label,r.name,used.length?used.map(projCode).join(', '):H('<span class="muted small">Not used yet</span>'),H(opts.length?`<div class="row" style="gap:6px;flex-wrap:nowrap"><select id="shm_${esc(r.x.id)}" aria-label="Project for ${esc(r.name)}">${opts.map(p=>`<option value="${esc(p.id)}">${esc(p.code+': '+p.name)}</option>`).join('')}</select><button class="btn sm" data-act="shMove" data-k="${r.k}" data-id="${esc(r.x.id)}">Move</button></div>`:'<span class="muted small">Used by several projects, stays shared</span>')]}))}</div>`}
 function pgSetup(u){
   if(!ui.project)return ph('setup')+needProject();
-  const tabs=[['customers','Customers'],['govs','Governorates'],['groups','Route groups'],['catcomp','Categories and companies'],['warehouses','Warehouses'],['sales','Sales team'],['agents','Logistics agents'],['opening','Opening stock']];
+  const tabs=[['customers','Customers'],['govs','Governorates'],['groups','Route groups'],['catcomp','Categories and companies'],['warehouses','Warehouses'],['sales','Sales team'],['agents','Logistics agents'],['opening','Opening stock'],...(u.role==='admin'&&sharedList().length?[['shared','Shared records ('+sharedList().length+')']]:[])];
   const t=ui.setupTab;let body='';
   if(t==='catcomp'){body=lsPanel()}
+  else if(t==='shared'){body=sharedPanel()}
   else if(t==='customers'){
-    body=`<div class="panel"><form data-form="customer" class="fgrid">
+    body=`<div class="panel"><form data-form="customer" class="fgrid">${setupProjSel()}
       <label>Customer ID<input name="code" required placeholder="e.g. C-1004" autocapitalize="characters"></label><label>Customer name<input name="name" required></label><label>Governorate<select name="govId">${opts(govsSorted(),'',null,'Choose governorate')}</select></label><label>Address<input name="address" required></label><label>Phone<input name="phone"></label>
       <button class="btn" type="submit">Add customer</button></form></div>`+
       table([{l:'Customer ID'},{l:'Customer'},{l:'Governorate'},{l:'Address'},{l:'Phone'},{l:''}],P(state.customers).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'',undefined,{numeric:true})).map(c=>{const row=[H(`<span class="code">${esc(c.code||'')}</span>`),c.name,govName(c.govId),c.address,c.phone||'',H(`<button class="btn plain sm" data-act="expand" data-id="${c.id}">Edit</button>`)];
@@ -1572,17 +1592,17 @@ function pgSetup(u){
     body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">A route group joins several governorates, so one route can cover all of them. Route groups are shared by all projects: create a group once and it is available when creating routes in every project.</p><form data-form="group">${groupFields(null)}<div style="margin-top:12px"><button class="btn" type="submit">Create route group</button></div></form></div>`+
       table([{l:'Route group'},{l:'Governorates'},{l:'Routes, all projects',num:1},{l:''}],rows,'No route groups yet. Create the first one above.');
   }else if(t==='warehouses'){
-    body=`<div class="panel"><form data-form="warehouse" class="fgrid">
+    body=`<div class="panel"><form data-form="warehouse" class="fgrid">${setupProjSel()}
       <label>Warehouse name<input name="name" required></label><label>Location<input name="location"></label>
       <button class="btn" type="submit">Add warehouse</button></form></div>`+
       table([{l:'Warehouse'},{l:'Location'},{l:'Units in stock',num:1},...(isAdmin()?[{l:''}]:[])],P(state.warehouses).map(w=>[w.name+((isAll()||w.projectId===ALL)?' ('+projCode(w.projectId)+')':''),w.location||'',String(locTotal(state,'W:'+w.id)),...(isAdmin()?[H(delBtn('warehouse',w.id))]:[])]),'No warehouses yet.');
   }else if(t==='sales'){
-    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Sales agents can receive stock through Transfer requests.</p><form data-form="salesperson" class="fgrid">
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Sales agents can receive stock through Transfer requests.</p><form data-form="salesperson" class="fgrid">${setupProjSel()}
       <label>Name<input name="name" required></label><label>Role<input name="role" placeholder="e.g. Van sales"></label><label>Phone<input name="phone"></label>
       <button class="btn" type="submit">Add sales agent</button></form></div>`+
       table([{l:'Name'},{l:'Role'},{l:'Phone'},{l:'Units held',num:1},...(isAdmin()?[{l:''}]:[])],P(state.salesTeam).map(x=>[x.name+((isAll()||x.projectId===ALL)?' ('+projCode(x.projectId)+')':''),x.role||'',x.phone||'',String(locTotal(state,'S:'+x.id)),...(isAdmin()?[H(delBtn('sales',x.id))]:[])]),'No sales team yet.');
   }else if(t==='agents'){
-    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so that person sees the agent's trips on the My tasks page. The login can be a logistics agent or a logistics team leader account.</p><form data-form="agent" class="fgrid">
+    body=`<div class="panel"><p class="muted small" style="margin-bottom:10px">Link an agent to a login so that person sees the agent's trips on the My tasks page. The login can be a logistics agent or a logistics team leader account.</p><form data-form="agent" class="fgrid">${setupProjSel()}
       <label>Agent name<input name="name" required></label><label>Phone<input name="phone"></label><label>Vehicle<input name="vehicle"></label>
       <label>Login account<select name="userId">${agentLoginOpts('','')}</select></label>
       <button class="btn" type="submit">Add agent</button></form></div>`+
@@ -1613,7 +1633,7 @@ function pgSetup(u){
         return row}),'No opening stock yet.');
   }
   if(false)body=body.replace(/^<div class="panel">[\s\S]*?<\/form><\/div>/,allGate('add or change '+(tabs.find(x=>x[0]===t)||['',''])[1].toLowerCase()));
-  return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+(isAll()&&!['govs','groups','opening','catcomp'].includes(t)?'<p class="note" style="margin-bottom:14px">You are in <strong>All my projects</strong>. What you add here is <strong>shared by every project</strong>, marked ALL.</p>':'')+
+  return ph('setup','Customers, warehouses, sales team, logistics agents and opening stock for the current project.')+(isAll()&&!['govs','groups','opening','catcomp','shared'].includes(t)?'<p class="note" style="margin-bottom:14px">You are in <strong>All my projects</strong>. What you add here is <strong>shared by every project</strong>, marked ALL.</p>':'')+
     `<div class="tabs" role="tablist">${tabs.map(x=>`<button class="tab ${t===x[0]?'on':''}" role="tab" aria-selected="${t===x[0]}" data-act="setupTab" data-tab="${x[0]}">${x[1]}</button>`).join('')}</div>`+body;
 }
 
@@ -3054,10 +3074,10 @@ const forms={
     if(nb)log(s,'Batch dates updated',null,p.name+': '+nb+' batch(es)','',null,p.projectId===ALL?null:p.projectId);
     ui.expand=null;log(s,'Product updated',null,code+' '+sku+' '+p.name,'',null,p.projectId===ALL?null:p.projectId)},'Product saved.')},
   customerEdit(fd,f){act(s=>{const c=find(s.customers,f.dataset.id);const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(c.projectId===ALL||x.projectId===ALL||x.projectId===c.projectId)&&x.id!==c.id&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');Object.assign(c,{code,name:String(fd.get('name')).trim(),govId:fd.get('govId')||'',address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()});ui.expand=null;log(s,'Customer updated',null,code+' '+c.name)},'Customer saved.')},
-  customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();if(s.customers.some(x=>(ui.project===ALL||x.projectId===ALL||x.projectId===ui.project)&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:ui.project,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
-  warehouse(fd){act(s=>{const w={id:rid('wh'),projectId:ui.project,name:String(fd.get('name')).trim(),location:String(fd.get('location')).trim()};s.warehouses.push(w);log(s,'Warehouse added',null,w.name)},'Warehouse added.')},
-  salesperson(fd){act(s=>{const x={id:rid('st'),projectId:ui.project,name:String(fd.get('name')).trim(),role:String(fd.get('role')).trim(),phone:String(fd.get('phone')).trim()};s.salesTeam.push(x);log(s,'Sales agent added',null,x.name)},'Sales agent added.')},
-  agent(fd){act(s=>{const a={id:rid('ag'),projectId:ui.project,name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim(),vehicle:String(fd.get('vehicle')).trim(),userId:fd.get('userId')||''};
+  customer(fd){act(s=>{const code=String(fd.get('code')).trim().toUpperCase();const cpid=setupPid(fd);if(s.customers.some(x=>(cpid===ALL||x.projectId===ALL||x.projectId===cpid)&&(x.code||'').toUpperCase()===code))throw new Error('Customer ID '+code+' is already used in this project.');const c={id:rid('cus'),projectId:cpid,code,govId:fd.get('govId')||'',name:String(fd.get('name')).trim(),address:String(fd.get('address')).trim(),phone:String(fd.get('phone')).trim()};s.customers.push(c);log(s,'Customer added',null,c.code+' '+c.name)},'Customer added.')},
+  warehouse(fd){act(s=>{const w={id:rid('wh'),projectId:setupPid(fd),name:String(fd.get('name')).trim(),location:String(fd.get('location')).trim()};s.warehouses.push(w);log(s,'Warehouse added',null,w.name)},'Warehouse added.')},
+  salesperson(fd){act(s=>{const x={id:rid('st'),projectId:setupPid(fd),name:String(fd.get('name')).trim(),role:String(fd.get('role')).trim(),phone:String(fd.get('phone')).trim()};s.salesTeam.push(x);log(s,'Sales agent added',null,x.name)},'Sales agent added.')},
+  agent(fd){act(s=>{const a={id:rid('ag'),projectId:setupPid(fd),name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim(),vehicle:String(fd.get('vehicle')).trim(),userId:fd.get('userId')||''};
     if(a.userId&&s.agents.some(x=>!x.deleted&&x.userId===a.userId))throw new Error('That login is already linked to another agent. One login can be linked to one agent.');
     const extra=linkLogin(s,a.userId,a.name);s.agents.push(a);log(s,'Logistics agent added',null,a.name+(a.userId?', login '+(find(s.users,a.userId)||{}).username:''));toastMsg='Agent added.'+extra},null);if(toastMsg){toast(toastMsg);toastMsg=''}},
   agentEdit(fd,f){act(s=>{const a=find(s.agents,f.dataset.id);if(!a||a.deleted)throw new Error('This agent no longer exists.');
@@ -3622,6 +3642,13 @@ const acts={
     const sh=[['Date','Project','Shipping company','Shipping revenue','Cost %','Shipping cost','Shipping profit','Note','Entered by'],...(state.shipDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.total,x.pct,x.cost,x.total-x.cost,x.note||'',x.by||''])];
     const py=[['Date','Project','Payment company','Method','Products amount','Shipping amount','Transactions','Gateway fee %','Gateway per transaction','Gateway fees','Customer charge %','Customer charge per transaction','E-service revenue','E-service profit','Collect from vendor','Entered by'],...(state.payDays||[]).filter(inR).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,projCode(x.projectId),x.co,x.method,x.sales,x.ship,x.orders,x.pct,x.fixed,x.fee,x.cpct!==undefined?x.cpct:'',x.cfixed!==undefined?x.cfixed:'',eRev(x),eRev(x)-x.fee,x.sales+x.ship+eRev(x)-x.fee,x.by||''])];
     if(!window.XLSX)return;const wb=XLSX.utils.book_new();[['Shipping',sh],['E-service',py]].forEach(([n,r])=>{const ws=XLSX.utils.aoa_to_sheet(r);ws['!cols']=r[0].map(()=>({wch:16}));XLSX.utils.book_append_sheet(wb,ws,n)});await saveFile('daf-daily-costs-'+from+'-to-'+to+'.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))},
+  shMove(el){const k=el.dataset.k,id=el.dataset.id;const sel=document.getElementById('shm_'+id);const to=sel&&sel.value;if(!to)return;
+    act(s=>{if(me().role!=='admin')throw new Error('Only an administrator can move shared records.');const x=(s[k]||[]).find(y=>y.id===id);if(!x||x.projectId!==ALL)throw new Error('This record is no longer shared.');
+      const used=sharedUse(s,k,id);if(used.length>1||(used.length&&used[0]!==to))throw new Error('This record is used by another project, so it cannot move to this one.');
+      x.projectId=to;let extra='';
+      if(k==='products'){(s.batches||[]).forEach(b=>{if(b.productId===id&&b.projectId===ALL)b.projectId=to});let n=0;s.movements.forEach(m=>{if(m.productId===id&&m.projectId===ALL){m.projectId=to;n++}});if(n)extra=', '+n+' stock movement(s) moved with it'}
+      if(k==='warehouses'||k==='salesTeam'){const loc=(k==='warehouses'?'W:':'S:')+id;let n=0;s.movements.forEach(m=>{if((m.from===loc||m.to===loc)&&m.projectId===ALL){m.projectId=to;n++}});if(n)extra=', '+n+' stock movement(s) moved with it'}
+      log(s,'Shared record moved',null,(SH_KINDS.find(z=>z[0]===k)||['',''])[1]+' '+(x.name||'')+' moved to '+projCode(to)+extra,'')},'Moved to '+projCode(to)+'.')},
   rmDay(el){ui.rmDay=el.dataset.k;render()},
   rmToggle(el){ui.rmOpen=ui.rmOpen||{};ui.rmOpen[el.dataset.id]=!ui.rmOpen[el.dataset.id];render()},
   stopOpen(el){openStop(el.dataset.id)},
