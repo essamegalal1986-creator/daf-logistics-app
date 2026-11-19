@@ -1650,15 +1650,15 @@ function productLine(prods,first){
 }
 
 function pgRequests(u){
-  const editR=ui.editReq?state.requests.find(x=>x.id===ui.editReq&&x.status==='New'):null;if(ui.editReq&&!editR)ui.editReq=null;
+  const editR=ui.editReq?state.requests.find(x=>x.id===ui.editReq&&(x.status==='New'||x.status==='Failed')&&canEditReq(x)):null;if(ui.editReq&&!editR)ui.editReq=null;
   if(!ui.project)return ph('requests')+needProject();
   const prods=PS();
   const dests=`<optgroup label="Sales agents">${P(state.salesTeam).map(x=>`<option value="S:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="Warehouses">${P(state.warehouses).map(x=>`<option value="W:${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`;
   const f=ui.reqFilter;
   const R=P(state.requests).filter(r=>!f||r.status===f).slice().reverse();
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),H(itemsHtml(r)),H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${(()=>{const n=state.tickets.filter(t=>t.ref===r.ref&&t.status==='Open'&&tkCanSee(t)).length;return `<button class="btn plain sm" data-act="tkGo" data-ref="${esc(r.ref)}" title="Tickets on this order">Ticket${n?` <span class="nav-c">${n}</span>`:''}</button>`})()}${r.status==='New'&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);return [H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),H(itemsHtml(r)),H(st(r.status)+waitBadge(r)),H(reqDue(r)),t?nm(state.agents,t.agentId):'',t?fmtD(t.date):'',H(`${esc(r.createdBy)}<br><span class="muted small">${fmtT(r.createdAt)}</span>`),H(`<div class="row">${(()=>{const n=state.tickets.filter(t=>t.ref===r.ref&&t.status==='Open'&&tkCanSee(t)).length;return `<button class="btn plain sm" data-act="tkGo" data-ref="${esc(r.ref)}" title="Tickets on this order">Ticket${n?` <span class="nav-c">${n}</span>`:''}</button>`})()}${(r.status==='New'||r.status==='Failed')&&canEditReq(r)?`<button class="btn sm" data-act="reqEdit" data-id="${esc(r.id)}">Edit</button>`:''}${r.items.length?`<button class="btn plain sm" data-act="exportOrder" data-ref="${esc(r.ref)}" title="Export products to Excel">Excel</button>`:''}${delBtn('order',r.id)}</div>`)]});
   return ph('requests','Operations creates each request. A reference number is issued here and follows the order to the end.')+`
-  ${isAll()&&!editR?allGate('create a request'):`<div class="panel" id="reqPanel"${editR?' style="border:2px solid var(--route)"':''}><div class="spread"><h2>${editR?'Edit request '+esc(editR.ref):'New request'}</h2>${editR?`<span class="small muted">Created by ${esc(editR.createdBy)}, ${fmtT(editR.createdAt)}</span>`:''}</div>
+  ${isAll()&&!editR?allGate('create a request'):`<div class="panel" id="reqPanel"${editR?' style="border:2px solid var(--route)"':''}><div class="spread"><h2>${editR?'Edit request '+esc(editR.ref):'New request'}</h2>${editR?`<span class="small muted">Created by ${esc(editR.createdBy)}, ${fmtT(editR.createdAt)}</span>`:''}</div>${editR&&editR.status==='Failed'?`<p class="note" style="margin:6px 0 10px">This request failed${editR.failReason?' ('+esc(editR.failReason)+')':''}. Update the products or quantities, save, then go to Prepare requests to reassign it or return it to stock. No stock moves when you save.</p>`:''}
   <form data-form="request" class="stack" id="reqForm"${editR?` data-edit="${esc(editR.id)}"`:''}>
     <div class="fgrid">
       <label>Request type<select name="type" data-chg="reqType" required>${Object.keys(TYPES).map(t=>`<option>${t}</option>`).join('')}</select></label>
@@ -1727,7 +1727,7 @@ function preparePanel(r){
 function pgPrepare(u){
   if(!ui.project)return ph('prepare')+needProject();
   const R=P(state.requests).filter(r=>['New','Prepared','Failed'].includes(r.status));
-  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),H(itemsHtml(r)),H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
+  const rows=R.map(r=>{const t=taskOf(state,r.ref);const row=[H(refTag(r.ref)+projTag(r.projectId)),H(`<span class="ty">${esc(r.type)}</span>`),H(esc(partyText(state,r))+noteBox(r,true)),H(itemsHtml(r)),H(st(r.status)+waitBadge(r)+(r.failReason?`<br><span class="muted small">${esc(r.failReason)}</span>`:'')+(r.reqDate?`<br><span class="small">Requested: ${reqDue(r,true)}</span>`:'')),t&&t.agentId&&r.status!=='Failed'?`${nm(state.agents,t.agentId)}, ${fmtD(t.date)}`:(t?'Set on route':''),H(`<div class="row" style="gap:6px">${r.status==='Failed'&&canEditReq(r)?`<button class="btn plain sm" data-act="reqEditGo" data-id="${esc(r.id)}" title="Change the products or quantities before you reassign or return it">Edit request</button>`:''}<button class="btn sm ${ui.expand===r.id?'plain':''}" data-act="expand" data-id="${esc(r.id)}">${r.status==='New'?'Prepare':r.status==='Failed'?'Reassign or return':'Edit'}</button></div>`)];if(ui.expand===r.id){row._cls='expanded';row._after=preparePanel(r)}return row});
   const locked=P(state.requests).filter(r=>['Routed','In transit'].includes(r.status)).length;
   return ph('prepare','Choose where the stock for each product comes from or goes to, a warehouse or a sales team member. This creates the task; the agent and date are set on the route.')+
   table([{l:'Reference'},{l:'Type'},{l:'Customer or destination'},{l:'Products'},{l:'Status'},{l:'Agent and date'},{l:''}],rows,'Nothing to prepare. New requests from Operations appear here.')+
@@ -3114,7 +3114,9 @@ const forms={
     if(false){const need={};items.forEach(it=>need[it.batchId]=(need[it.batchId]||0)+it.qty);for(const b in need){const a=batchAvail(s,b);if(a<need[b])throw new Error('Batch '+batchNo(s,b)+' has '+a+' available. This request needs '+need[b]+'.')}}
     if(!items.length&&type!=='Documentation')throw new Error('Add at least one product and quantity.');
     const old=editId?find(s.requests,editId):null;
-    if(editId&&(!old||old.status!=='New'))throw new Error('This request has already been prepared, so it can no longer be edited here.');
+    if(editId&&(!old||!['New','Failed'].includes(old.status)))throw new Error('This request is already on a route, so it can no longer be edited here.');
+    if(old&&!canEditReq(old))throw new Error('Only the person who created this request, or a manager, can edit it.');
+    const wasFailed=!!(old&&old.status==='Failed');
     const r=old?{projectId:old.projectId,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:old.createdAt,createdBy:old.createdBy}:{projectId:ui.project,type,items,status:'New',notes:String(fd.get('notes')||'').trim(),createdAt:now(),createdBy:cur()};
     if(T.customer){r.customerId=nc?nc.id:fd.get('customerId');const typed=String(fd.get('custCode')||'').trim();if(!r.customerId)throw new Error(typed?'No customer with ID '+typed+' in this project.':'Enter the customer ID or choose the customer.')}
     r.govId=fd.get('govId');if(!r.govId)throw new Error('Choose the governorate.');
@@ -3124,10 +3126,13 @@ const forms={
     if(old){
       const before=old.type+': '+partyText(s,old)+(old.items.length?', '+itemsText(s,old):'')+(old.reqDate?', requested '+old.reqDate:'');
       r.ref=old.ref;r.id=old.id;r.updatedAt=now();r.updatedBy=cur();
+      if(wasFailed){/* stays Failed: the stock never left, so it still needs Reassign or Back to stock */
+        for(const k of ['preparedAt','preparedBy','failReason','failedAt'])if(old[k]!==undefined)r[k]=old[k];r.status='Failed';
+        r.items.forEach(it=>{const o=old.items.find(x=>x.productId===it.productId&&x.batchId===it.batchId)||old.items.find(x=>x.productId===it.productId);if(o&&itemLoc(o)){it.loc=itemLoc(o);it.warehouseId=o.warehouseId||''}})}
       s.requests[s.requests.indexOf(old)]=r;
       const after=type+': '+partyText(s,r)+(items.length?', '+itemsText(s,r):'')+(r.reqDate?', requested '+r.reqDate:'');
-      log(s,'Request updated',r.ref,before===after?'No changes':'Before: '+before+' | After: '+after,'New');
-      toastMsg='Request '+r.ref+' updated'+(nc?' and customer '+nc.code+' added':'')+'.';ui.editReq=null;
+      log(s,'Request updated',r.ref,(wasFailed?'Failed request edited. ':'')+(before===after?'No changes':'Before: '+before+' | After: '+after),r.status);
+      toastMsg='Request '+r.ref+' updated'+(nc?' and customer '+nc.code+' added':'')+(wasFailed?'. Now reassign it or return it to stock on Prepare requests':'')+'.';ui.editReq=null;
     }else{
     r.ref=nextRef(s);r.id=r.ref;
     s.requests.push(r);
@@ -3520,6 +3525,7 @@ const acts={
   closeModal(el,ev){closeModal()},
   reqEdit(el){ui.editReq=el.dataset.id;render();const pn=document.getElementById('reqPanel');if(pn&&pn.scrollIntoView)pn.scrollIntoView({block:'start'});else window.scrollTo(0,0)},
   reqEditCancel(){ui.editReq=null;render()},
+  reqEditGo(el){ui.page='requests';ui.expand=null;acts.reqEdit(el)},
   tripEditOpen(el){ui.editTrip=ui.editTrip===el.dataset.id?null:el.dataset.id;ui.addTo=null;render()},
   routeAddOpen(el){ui.editTrip=null;ui.addTo=ui.addTo===el.dataset.id?null:el.dataset.id;render()},
   reqNewOpen(){reqNewToggle(true)},
