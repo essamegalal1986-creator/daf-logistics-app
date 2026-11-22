@@ -948,6 +948,10 @@ function visSale(x){const u=me();if(x.recordedBy===u.username)return true;const 
 function visRef(ref){if(!ref)return false;const r=state.requests.find(y=>y.ref===ref);if(r)return visReq(r);const sl=state.sales.find(y=>y.ref===ref);if(sl)return visSale(sl);const c=(state.counts||[]).find(y=>y.id===ref);return !!c&&c.by===me().username}
 function visMov(m){return m.by===me().username||visRef(m.ref)}
 function visLog(l){return l.by===me().username||visRef(l.ref)}
+/* Shared trips (made in All my projects) can hold stops of several projects: show only the trips and stops of the project being viewed */
+const inView=pid=>isAll()?myProjIds().includes(pid):pid===ui.project;
+function stopIn(rt,t){if(!rt||rt.projectId!==ALL||!t)return true;const u=me();if(u&&myAgentIds(u).includes(rt.agentId))return true;return inView(t.projectId||(find(state.requests,t.requestId)||{}).projectId)}
+const PR=()=>P(state.routes).filter(rt=>rt.projectId!==ALL||rt.taskIds.some(id=>stopIn(rt,find(state.tasks,id))));
 const P=list=>{const out=P0(list);if(!state||!scopeOwn())return out;
   if(list===state.requests)return out.filter(visReq);if(list===state.tasks)return out.filter(visTask);if(list===state.routes)return out.filter(visRoute);
   if(list===state.sales)return out.filter(visSale);if(list===state.movements)return out.filter(visMov);if(list===state.counts)return out.filter(c=>c.by===me().username);return out};
@@ -1168,10 +1172,11 @@ function hm(iso){if(!iso)return '';return new Date(iso).toLocaleTimeString('en-U
 function durTxt(ms){const m=Math.max(0,Math.round(ms/6e4));const h=Math.floor(m/60);return h?h+'h '+(m%60)+'m':m+'m'}
 function closedAt(t){return t.status==='Completed'?t.completedAt:t.status==='Failed'?t.failedAt:null}
 /* A trip's day on the route map = the earliest requested date of its orders (the trip date only if none has one) */
-function tripDay(rt){const ds=(rt.taskIds||[]).map(id=>{const t=find(state.tasks,id);const r=t&&find(state.requests,t.requestId);return r&&r.reqDate}).filter(Boolean).sort();return ds[0]||rt.date}
+/* The route map places a trip on its trip date (the date chosen for the trip); requested date only if a trip has no date */
+function tripDay(rt){if(rt.date)return rt.date;const ds=(rt.taskIds||[]).map(id=>{const t=find(state.tasks,id);const r=t&&find(state.requests,t.requestId);return r&&r.reqDate}).filter(Boolean).sort();return ds[0]||locDay(rt.createdAt)}
 function tripInfo(rt){
   const t0=today();
-  const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).filter(t=>ownTrip(rt)||visTask(t)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
+  const stops=rt.taskIds.map(id=>find(state.tasks,id)).filter(Boolean).filter(t=>(ownTrip(rt)||visTask(t))&&stopIn(rt,t)).map(t=>({t,r:find(state.requests,t.requestId)})).filter(x=>x.r);
   const isClosed=x=>['Completed','Failed'].includes(x.t.status);
   stops.forEach(x=>{x.closed=isClosed(x);const due=x.r.reqDate||rt.date;x.late=!x.closed&&due<t0;
     x.lateDays=x.late?Math.max(1,daysBetween(due,t0)):0;
@@ -1216,7 +1221,7 @@ function tripCard(rt){
   const flags=[info.failed?`<span class="tflag bad">${info.failed} failed</span>`:'',info.late?`<span class="tflag warn">${info.late} late</span>`:''].join('');
   const head=`<div class="trip-h">
       <span class="trip-ic ${info.failed||info.late?'bad':info.allClosed?'done':''}" aria-hidden="true">${info.failed||info.late?'!':info.allClosed?'✓':IC.routes?`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC.routes}</svg>`:'▶'}</span>
-      <span class="code trip-n">${esc(rt.name)}</span>${projTag(rt.projectId)}${tripDay(rt)<today()?`<span class="tflag warn" title="Requested for ${esc(fmtD(tripDay(rt)))}">Requested ${esc(fmtD(tripDay(rt)))}</span>`:''}
+      <span class="code trip-n">${esc(rt.name)}</span>${projTag(rt.projectId)}${tripDay(rt)<today()?`<span class="tflag warn" title="Trip date ${esc(fmtD(tripDay(rt)))}">Trip date ${esc(fmtD(tripDay(rt)))}</span>`:''}
       <span class="who-a"><span class="avatar" aria-hidden="true">${esc(initials(ag.name))}</span><strong>${esc(ag.name||'No agent')}</strong></span>
       <span class="muted small">${esc([rt.groupId&&nm(state.routeGroups,rt.groupId),ag.vehicle].filter(Boolean).join(' · '))}</span>
       ${flags}
@@ -1235,15 +1240,15 @@ function tripCard(rt){
 function routeMapPanel(){
   const day=ui.rmDay||'today';const d=day==='tomorrow'?dayStr(1):dayStr(0);
   /* Today = trips dated today, plus earlier trips that still have open stops or had a stop closed today */
-  const touchedToday=r=>r.taskIds.some(id=>{const t=find(state.tasks,id);if(!t)return false;if(!['Completed','Failed'].includes(t.status))return true;const c=closedAt(t);return c&&locDay(c)===d});
-  const all=P(state.routes).filter(r=>{const td=tripDay(r);return td===d||(day!=='tomorrow'&&td<d&&touchedToday(r))});
+  const touchedToday=r=>r.taskIds.some(id=>{const t=find(state.tasks,id);if(!t||!stopIn(r,t))return false;if(!['Completed','Failed'].includes(t.status))return true;const c=closedAt(t);return c&&locDay(c)===d});
+  const all=PR().filter(r=>{const td=tripDay(r);return td===d||(day!=='tomorrow'&&td<d&&touchedToday(r))});
   const agents=[...new Set(all.map(r=>r.agentId).filter(Boolean))].map(id=>[id,nm(state.agents,id)]).sort((a,b)=>a[1].localeCompare(b[1]));
   if(ui.rmAgent&&!agents.some(a=>a[0]===ui.rmAgent))ui.rmAgent='';
   const rs=all.filter(r=>!ui.rmAgent||r.agentId===ui.rmAgent).map(r=>({r,i:tripInfo(r)})).sort((a,b)=>a.i.rank-b.i.rank||a.r.name.localeCompare(b.r.name));
   const sum=k=>rs.reduce((a,x)=>a+x.i[k],0);const stops=rs.reduce((a,x)=>a+x.i.stops.length,0);
   const pill=(v,l,cls)=>`<div class="rsum-i ${cls||''} ${v?'':'zero'}"><b>${v}</b><span>${l}</span></div>`;
   return `<div class="panel rmap2">
-    <div class="spread" style="margin-bottom:12px"><div><h2>Route map</h2><p class="muted small">${esc(fmtD(d))}. ${day==='tomorrow'?'Trips with orders requested for tomorrow.':'Trips with orders requested for today, plus earlier trips still running or closed today.'} Trips that need attention come first; finished trips fold away.</p></div>
+    <div class="spread" style="margin-bottom:12px"><div><h2>Route map</h2><p class="muted small">${esc(fmtD(d))}. ${day==='tomorrow'?'Trips dated tomorrow.':'Trips dated today, plus earlier trips still running or closed today.'} Trips that need attention come first; finished trips fold away.</p></div>
       <div class="row"><div class="tabs" role="tablist" style="margin:0;border:0">${[['today','Today'],['tomorrow','Tomorrow']].map(([k,l])=>`<button class="tab ${day===k?'on':''}" role="tab" aria-selected="${day===k}" data-act="rmDay" data-k="${k}">${l}</button>`).join('')}</div>
       <label style="flex-direction:row;align-items:center;gap:6px">Agent<select data-chg="rmAgent"><option value="">All agents</option>${agents.map(a=>`<option value="${esc(a[0])}" ${ui.rmAgent===a[0]?'selected':''}>${esc(a[1])}</option>`).join('')}</select></label></div></div>
     <div class="rsum">${pill(rs.length,'Trips')}${pill(stops,'Stops')}${pill(sum('done'),'Done','ok')}${pill(sum('transit'),'On the way','go')}${pill(sum('waiting'),'Not started')}${pill(sum('failed'),'Failed','bad')}${pill(sum('late'),'Late','warn')}</div>
@@ -1813,7 +1818,7 @@ function routeAddPanel(rt){
 }
 function routeCard(rt,agentView){
   const s=routeStatus(rt);
-  const stops=rt.taskIds.map((id,i)=>{const t=find(state.tasks,id);if(!t||(!ownTrip(rt)&&!visTask(t)))return '';const r=find(state.requests,t.requestId);if(!r)return '';
+  const stops=rt.taskIds.map((id,i)=>{const t=find(state.tasks,id);if(!t||(!ownTrip(rt)&&!visTask(t))||!stopIn(rt,t))return '';const r=find(state.requests,t.requestId);if(!r)return '';
     let actions='';
     if(agentView&&['Routed','In transit'].includes(t.status)){
       actions=`<div class="row" style="margin-top:10px">${t.status==='Routed'?`<button class="btn plain sm" data-act="taskStart" data-id="${t.id}">Start</button>`:''}
@@ -1833,7 +1838,7 @@ function pgRoutes(u){
   const rows=waiting.map(t=>{const r=find(state.requests,t.requestId);return `<label class="route-task" data-agent="${t.agentId}" data-gov="${esc(r.govId||'')}" style="flex-direction:row;align-items:center;gap:10px;color:var(--ink);padding:8px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" name="task" value="${t.id}">${refTag(r.ref)}<span class="ty">${esc(r.type)}</span><span>${esc(partyText(state,r))}${noteBox(r,true)}</span><span class="small">${r.reqDate?'Requested '+reqDue(r,true):'<span class="muted">No requested date</span>'}</span></label>`}).join('');
   const rf=ui.routeF||{gov:'',group:''};
   const grpOf=id=>find(state.routeGroups,id);
-  const routes=P(state.routes).filter(rt=>(!rf.group||rt.groupId===rf.group)&&(!rf.gov||routeGovs(rt).includes(rf.gov))).slice().reverse();
+  const routes=PR().filter(rt=>(!rf.group||rt.groupId===rf.group)&&(!rf.gov||routeGovs(rt).includes(rf.gov))).slice().reverse();
   const groups=state.routeGroups.slice().sort((a,b)=>a.name.localeCompare(b.name));
   return ph('routes','Put prepared tasks on a route or trip, then choose the agent and date for the whole route. Filter by route group or governorate; stops follow the order you tick them.')+`
   ${false?'':`<div class="panel"><h2>Create route</h2>
@@ -1856,7 +1861,7 @@ function pgRoutes(u){
       <label style="flex-direction:row;align-items:center;gap:8px">Group<select data-chg="rlist" data-k="group" style="width:auto"><option value="">All groups</option>${groups.map(g=>`<option value="${g.id}" ${rf.group===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>
       <label style="flex-direction:row;align-items:center;gap:8px">Governorate<select data-chg="rlist" data-k="gov" style="width:auto"><option value="">All governorates</option>${govsSorted().map(g=>`<option value="${g.id}" ${rf.gov===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>
     </div></div>
-  ${routes.length?routes.map(rt=>routeCard(rt,false)).join(''):`<div class="panel empty">${P(state.routes).length?'No routes match these filters.':'No routes yet.'}</div>`}`;
+  ${routes.length?routes.map(rt=>routeCard(rt,false)).join(''):`<div class="panel empty">${PR().length?'No routes match these filters.':'No routes yet.'}</div>`}`;
 }
 
 function pgMyTasks(u){
@@ -1867,7 +1872,7 @@ function pgMyTasks(u){
   if(view!=='all'&&view!=='mine'&&!all.some(a=>a.id===view))view='all';
   const agentIds=view==='mine'?ids:view==='all'?(sup?[...new Set([...ids,...all.map(a=>a.id)])]:ids):[view];
   const mineFirst=(a,b)=>(ids.includes(b.agentId)?1:0)-(ids.includes(a.agentId)?1:0)||(a.date).localeCompare(b.date);
-  const routes=P(state.routes).filter(r=>agentIds.includes(r.agentId)).sort(mineFirst);
+  const routes=PR().filter(r=>agentIds.includes(r.agentId)).sort(mineFirst);
   const active=routes.filter(r=>routeStatus(r)!=='Done'), done=routes.filter(r=>routeStatus(r)==='Done').reverse().slice(0,5);
   const waiting=P(state.tasks).filter(t=>agentIds.includes(t.agentId)&&t.status==='Awaiting route');
   const openCount=id=>P(state.tasks).filter(t=>t.agentId===id&&['Routed','In transit'].includes(t.status)).length;
@@ -2911,7 +2916,7 @@ function reportData(){
   D.requests={cols:['Reference','Type','Governorate','Customer ID','Customer or destination','Products','Status','Requested date','Created by','Created','Prepared by','Completed'],rows:R.map(r=>[H(refTag(r.ref)),r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),H(st(r.status)),H(reqDue(r,true)),r.createdBy,fmtT(r.createdAt),r.preparedBy||'',fmtT(r.completedAt)]),csv:R.map(r=>[r.ref,r.type,govName(r.govId),(find(state.customers,r.customerId)||{}).code||'',partyBase(state,r),itemsText(state,r),r.status,r.reqDate||'',r.createdBy,r.createdAt,r.preparedBy||'',r.completedAt||''])};
   const T=P(state.tasks).filter(t=>inRange(t.createdAt)&&okRef(t.ref)&&okType(t.ref)&&okGov(t.ref)&&okUser(t.createdBy)&&okSt(t.status)).slice().reverse();
   D.tasks={cols:['Task','Reference','Agent','Task date','Route','Status','Prepared by','Completed or failed'],rows:T.map(t=>[H(`<span class="code">${esc(t.id)}</span>`),H(refTag(t.ref)),nm(state.agents,t.agentId),fmtD(t.date),(find(state.routes,t.routeId)||{}).name||'',H(st(t.status)),t.createdBy,fmtT(t.completedAt||t.failedAt)]),csv:T.map(t=>[t.id,t.ref,nm(state.agents,t.agentId),t.date,(find(state.routes,t.routeId)||{}).name||'',t.status,t.createdBy,t.completedAt||t.failedAt||''])};
-  const RT=P(state.routes).filter(r=>inRange(r.createdAt)&&(!q||r.taskIds.some(id=>okRef((find(state.tasks,id)||{}).ref))||r.id.toLowerCase().includes(q))&&okUser(r.createdBy)&&okSt(routeStatus(r))&&(!f.gov||routeGovs(r).includes(f.gov))).slice().reverse();
+  const RT=PR().filter(r=>inRange(r.createdAt)&&(!q||r.taskIds.some(id=>okRef((find(state.tasks,id)||{}).ref))||r.id.toLowerCase().includes(q))&&okUser(r.createdBy)&&okSt(routeStatus(r))&&(!f.gov||routeGovs(r).includes(f.gov))).slice().reverse();
   const refsOf=r=>r.taskIds.map(id=>(find(state.tasks,id)||{}).ref).filter(Boolean);
   D.routes={cols:['Trip number','Note','Group','Governorates','Date','Agent','Stops','Status','Created by'],rows:RT.map(r=>[H(`<span class="code">${esc(r.name)}</span>`),r.note||'',nm(state.routeGroups,r.groupId),routeGovs(r).map(govName).join(', '),fmtD(r.date),nm(state.agents,r.agentId),H(refsOf(r).map(x=>refTag(x)).join(' ')),H(st(routeStatus(r))),r.createdBy]),csv:RT.map(r=>[r.name,r.note||'',nm(state.routeGroups,r.groupId),routeGovs(r).map(govName).join(' / '),r.date,nm(state.agents,r.agentId),refsOf(r).join(' '),routeStatus(r),r.createdBy])};
   const S2=P(state.sales).filter(x=>inRange(x.at)&&okRef(x.ref)&&okType(x.ref)&&okGov(x.ref)&&okUser(x.recordedBy)&&(!f.status||f.status==='Recorded')).slice().reverse();
