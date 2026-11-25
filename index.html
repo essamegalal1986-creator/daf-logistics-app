@@ -934,6 +934,8 @@ function myProjects(u){return (u.role==='admin'||(u.projects||[]).includes('__al
 const ALL='__all';
 const isAll=()=>ui.project===ALL;
 const AG=()=>P(state.agents).filter(a=>!a.deleted);
+/* One person can have an agent record in several projects: reports group them by name so each person shows once */
+const agKey=a=>String((a&&a.name)||'').trim().replace(/\s+/g,' ').toLowerCase()||('id:'+(a&&a.id));
 const isAdmin=()=>{const u=me();return !!u&&u.role==='admin'};
 function delBtn(kind,id){return isAdmin()?`<button class="btn bad sm" data-act="askDelete" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`:''}
 function myProjIds(){const u=me();return u?myProjects(u).map(p=>p.id):[]}
@@ -1242,9 +1244,10 @@ function routeMapPanel(){
   /* Today = trips dated today, plus earlier trips that still have open stops or had a stop closed today */
   const touchedToday=r=>r.taskIds.some(id=>{const t=find(state.tasks,id);if(!t||!stopIn(r,t))return false;if(!['Completed','Failed'].includes(t.status))return true;const c=closedAt(t);return c&&locDay(c)===d});
   const all=PR().filter(r=>{const td=tripDay(r);return td===d||(day!=='tomorrow'&&td<d&&touchedToday(r))});
-  const agents=[...new Set(all.map(r=>r.agentId).filter(Boolean))].map(id=>[id,nm(state.agents,id)]).sort((a,b)=>a[1].localeCompare(b[1]));
+  const akey=r=>agKey(find(state.agents,r.agentId)||{id:r.agentId});
+  const agents=[...new Map(all.filter(r=>r.agentId).map(r=>[akey(r),nm(state.agents,r.agentId)])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
   if(ui.rmAgent&&!agents.some(a=>a[0]===ui.rmAgent))ui.rmAgent='';
-  const rs=all.filter(r=>!ui.rmAgent||r.agentId===ui.rmAgent).map(r=>({r,i:tripInfo(r)})).sort((a,b)=>a.i.rank-b.i.rank||a.r.name.localeCompare(b.r.name));
+  const rs=all.filter(r=>!ui.rmAgent||akey(r)===ui.rmAgent).map(r=>({r,i:tripInfo(r)})).sort((a,b)=>a.i.rank-b.i.rank||a.r.name.localeCompare(b.r.name));
   const sum=k=>rs.reduce((a,x)=>a+x.i[k],0);const stops=rs.reduce((a,x)=>a+x.i.stops.length,0);
   const pill=(v,l,cls)=>`<div class="rsum-i ${cls||''} ${v?'':'zero'}"><b>${v}</b><span>${l}</span></div>`;
   return `<div class="panel rmap2">
@@ -1294,8 +1297,9 @@ function agentPanel(){
   const from=per==='today'?t0:per==='7'?back(6):per==='30'?back(29):'';
   const inP=t=>per==='today'?t.date===t0:per==='month'?(t.date||'').slice(0,7)===t0.slice(0,7):(!from||(t.date||'')>=from);
   const T=P(state.tasks).filter(t=>t.agentId&&t.status!=='Awaiting route'&&inP(t));
-  const rows=AG().map(a=>{
-    const ts=T.filter(t=>t.agentId===a.id);
+  const grp=new Map();AG().forEach(a=>{const k=agKey(a);if(!grp.has(k))grp.set(k,[]);grp.get(k).push(a)});
+  const rows=[...grp.values()].map(as=>{const ids=as.map(x=>x.id);const a={...as[0],vehicle:[...new Set(as.map(x=>x.vehicle).filter(Boolean))].join(', '),pids:[...new Set(as.map(x=>x.projectId))]};
+    const ts=T.filter(t=>ids.includes(t.agentId));
     const c=k=>ts.filter(t=>t.status===k).length;
     const routed=c('Routed'),transit=c('In transit'),done=c('Completed'),failed=c('Failed');
     const routes=new Set(ts.map(t=>t.routeId).filter(Boolean)).size;
@@ -1307,7 +1311,7 @@ function agentPanel(){
     return `<div class="abar" role="img" aria-label="${r.done} completed, ${r.pending} pending, ${r.failed} failed"><i class="b-done" style="width:${w(r.done)}"></i><i class="b-pend" style="width:${w(r.pending)}"></i><i class="b-fail" style="width:${w(r.failed)}"></i></div>`};
   const rate=r=>r.total?Math.round(100*r.done/r.total)+'%':'';
   const periods=[['today','Today'],['7','Last 7 days'],['30','Last 30 days'],['month','This month'],['all','All time']];
-  const body=rows.map(r=>[H(`<strong>${esc(r.a.name)}</strong>${isAll()?' '+projTag(r.a.projectId):''}${r.a.vehicle?`<br><span class="muted small">${esc(r.a.vehicle)}</span>`:''}`),String(r.routes),{h:`<strong>${r.total}</strong>`},{h:r.pending?`<strong style="color:var(--warn)">${r.pending}</strong>`:'0'},String(r.routed),String(r.transit),{h:r.done?`<span style="color:var(--ok)">${r.done}</span>`:'0'},{h:r.failed?`<span class="neg">${r.failed}</span>`:'0'},rate(r),H(bar(r))]);
+  const body=rows.map(r=>[H(`<strong>${esc(r.a.name)}</strong>${isAll()?' '+r.a.pids.map(projTag).join(' '):''}${r.a.vehicle?`<br><span class="muted small">${esc(r.a.vehicle)}</span>`:''}`),String(r.routes),{h:`<strong>${r.total}</strong>`},{h:r.pending?`<strong style="color:var(--warn)">${r.pending}</strong>`:'0'},String(r.routed),String(r.transit),{h:r.done?`<span style="color:var(--ok)">${r.done}</span>`:'0'},{h:r.failed?`<span class="neg">${r.failed}</span>`:'0'},rate(r),H(bar(r))]);
   if(rows.length){const tot=[H('<strong>All agents</strong>'),String(sum('routes')),{h:`<strong>${sum('total')}</strong>`},{h:`<strong>${sum('pending')}</strong>`},String(sum('routed')),String(sum('transit')),String(sum('done')),String(sum('failed')),sum('total')?Math.round(100*sum('done')/sum('total'))+'%':'',''];body.push(tot)}
   return `<div class="panel"><div class="spread" style="margin-bottom:12px"><h2>Logistics agents</h2>
     <div class="tabs" style="margin:0;border:0" role="tablist">${periods.map(([k,l])=>`<button class="tab ${per===k?'on':''}" role="tab" aria-selected="${per===k}" data-act="agentPeriod" data-k="${k}">${l}</button>`).join('')}</div></div>
@@ -1870,7 +1874,9 @@ function pgMyTasks(u){
   if(!ids.length&&!sup)return ph('mytasks')+`<div class="panel empty">Your login is not linked to a logistics agent yet. Ask the administrator to link it on Setup data, Logistics agents.</div>`;
   const all=AG();let view=sup?(ui.mtAgent||(ids.length?'all':'all')):'mine';
   if(view!=='all'&&view!=='mine'&&!all.some(a=>a.id===view))view='all';
-  const agentIds=view==='mine'?ids:view==='all'?(sup?[...new Set([...ids,...all.map(a=>a.id)])]:ids):[view];
+  const vk=view!=='all'&&view!=='mine'?agKey(find(state.agents,view)):'';
+  const agentIds=view==='mine'?ids:view==='all'?(sup?[...new Set([...ids,...all.map(a=>a.id)])]:ids):all.filter(a=>agKey(a)===vk).map(a=>a.id);
+  const oneAg=[...new Map(all.map(a=>[agKey(a),a])).values()];const sameIds=a=>all.filter(x=>agKey(x)===agKey(a)).map(x=>x.id);
   const mineFirst=(a,b)=>(ids.includes(b.agentId)?1:0)-(ids.includes(a.agentId)?1:0)||(a.date).localeCompare(b.date);
   const routes=PR().filter(r=>agentIds.includes(r.agentId)).sort(mineFirst);
   const active=routes.filter(r=>routeStatus(r)!=='Done'), done=routes.filter(r=>routeStatus(r)==='Done').reverse().slice(0,5);
@@ -1879,7 +1885,7 @@ function pgMyTasks(u){
   const picker=sup?`<div class="panel"><div class="fgrid"><label>Show trips of<select data-chg="mtAgent">
       <option value="all" ${view==='all'?'selected':''}>All agents${ids.length?' (mine first)':''}</option>
       ${ids.length?`<option value="mine" ${view==='mine'?'selected':''}>Only my own trips</option>`:''}
-      <optgroup label="One agent">${all.map(a=>`<option value="${a.id}" ${view===a.id?'selected':''}>${esc(a.name)}${ids.includes(a.id)?' (you)':''}, ${openCount(a.id)} open</option>`).join('')}</optgroup></select></label></div>
+      <optgroup label="One agent">${oneAg.map(a=>`<option value="${a.id}" ${vk&&agKey(a)===vk?'selected':''}>${esc(a.name)}${sameIds(a).some(id=>ids.includes(id))?' (you)':''}, ${sameIds(a).reduce((n,id)=>n+openCount(id),0)} open</option>`).join('')}</optgroup></select></label></div>
       <p class="muted small" style="margin-top:8px">As ${u.role==='lead'?'team leader':'administrator'} you can start, complete or fail any agent's stop. It is recorded under your name.</p></div>`:'';
   const mark=r=>sup&&!ids.includes(r.agentId)?`<p class="small" style="margin:0 0 6px;color:var(--route);font-weight:700">Agent: ${esc(nm(state.agents,r.agentId))}</p>`:sup&&ids.includes(r.agentId)?`<p class="small" style="margin:0 0 6px;color:var(--ok);font-weight:700">Your trip</p>`:'';
   return ph('mytasks',sup?'Your trips and your agents\' trips. Update each stop as you go: completing it posts the stock movement and, for deliveries, the sale.':'Your routes and stops. Update each stop as you go: completing it posts the stock movement and, for deliveries, the sale.')+picker+
